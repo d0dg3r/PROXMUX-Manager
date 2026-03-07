@@ -3,7 +3,7 @@
         "message": "PROXMUX Manager"
     },
     "extDescription": {
-        "message": "Professional Proxmox VE cluster management for your browser. Quickly monitor resources, access consoles (noVNC, SPICE), and manage nodes with high-availability failover support."
+        "message": "Manage your Proxmox VE cluster. Monitor resources, access consoles (noVNC, SPICE), and manage nodes with failover support."
     },
     "settings": {
         "message": "Settings"

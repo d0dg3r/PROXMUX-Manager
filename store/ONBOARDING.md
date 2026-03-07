@@ -7,7 +7,7 @@ This document contains all the text, metadata, and justifications required to su
 - **Product Name**: PROXMUX Manager
 - **Short Name**: PROXMUX
 - **Detailed Description**: (See Section 2)
-- **Summary**: Manage your Proxmox VE cluster directly from your browser toolbar.
+- **Summary**: Manage your Proxmox VE cluster. Monitor resources, access consoles (noVNC, SPICE), and manage nodes with failover support.
 - **Category**: Developer Tools
 - **Additional Category**: Productivity
 - **Verified Website**: (Your GitHub Repo URL) https://github.com/d0dg3r/proxmux-manager
