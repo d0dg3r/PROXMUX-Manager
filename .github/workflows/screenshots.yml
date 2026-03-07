@@ -13,7 +13,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -33,5 +35,4 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add store/*.png store/*.jpg
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update store screenshots (1280x800 JPG) [skip ci]"
-          git push
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: update store screenshots (1280x800 JPG) [skip ci]" && git push origin HEAD:${{ github.ref_name }})
