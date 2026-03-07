@@ -1,3 +1,5 @@
+![ProxMux Banner](store/banner_ad.png)
+
 # ProxMux Manager Chrome Extension
 
 A dedicated Chrome Extension for Proxmox VE cluster management, providing instant access to VM, container, and node consoles.

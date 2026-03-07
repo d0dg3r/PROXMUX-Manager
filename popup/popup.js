@@ -5,84 +5,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loading');
     const noAuthOverlay = document.getElementById('no-auth');
     const settingsBtn = document.getElementById('settings-btn');
-    const settingsModal = document.getElementById('settings-modal');
     const sidepanelBtn = document.getElementById('sidepanel-btn');
-    const closeModalBtn = document.getElementById('close-modal');
-    const saveSettingsBtn = document.getElementById('save-settings-btn');
-    const toggleSecretBtn = document.getElementById('toggle-secret');
-    const secretInput = document.getElementById('api-secret');
-    const proxmoxUrlInput = document.getElementById('proxmox-url');
-    const apiUserInput = document.getElementById('api-user');
-    const apiTokenIdInput = document.getElementById('api-tokenid');
     const openSettingsOverlayBtn = document.getElementById('open-settings-overlay');
-    const saveStatus = document.getElementById('save-status');
     const template = document.getElementById('resource-item-template');
 
     // UI Event Listeners
-    settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+    settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
     
     sidepanelBtn.addEventListener('click', async () => {
         const window = await chrome.windows.getCurrent();
         chrome.sidePanel.open({ windowId: window.id });
         window.close(); // Optional: Close the popup if it's open
     });
-    openSettingsOverlayBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
-    closeModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+    openSettingsOverlayBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+
+    // Load saved settings
+    const settings = await chrome.storage.local.get(['proxmoxUrl', 'apiUser', 'apiTokenId', 'apiSecret', 'apiToken', 'failoverUrls']);
     
-    toggleSecretBtn.addEventListener('click', () => {
-        const isPassword = secretInput.type === 'password';
-        secretInput.type = isPassword ? 'text' : 'password';
-        toggleSecretBtn.innerHTML = isPassword 
-            ? '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12,17.5C14.33,17.5 16.31,16.04 17.11,14H1.5L9,14H15.11C14.31,16.04 12.33,17.5 12,17.5M12,5C7,5 2.73,8.11 1,12.5C2.73,16.89 7,20 12,20C17,20 21.27,16.89 23,12.5C21.27,8.11 17,5 12,5M12,18.5C9.67,18.5 7.69,17.04 6.89,15H17.11C16.31,17.04 14.33,18.5 12,18.5Z"/></svg>'
-            : '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/></svg>';
-    });
-
-    // Load saved settings into modal
-    const settings = await chrome.storage.local.get(['proxmoxUrl', 'apiUser', 'apiTokenId', 'apiSecret', 'apiToken']);
-    if (settings.proxmoxUrl) proxmoxUrlInput.value = settings.proxmoxUrl;
-    if (settings.apiUser) apiUserInput.value = settings.apiUser;
-    if (settings.apiTokenId) apiTokenIdInput.value = settings.apiTokenId;
-    if (settings.apiSecret) secretInput.value = settings.apiSecret;
-
-    saveSettingsBtn.addEventListener('click', async () => {
-        const url = proxmoxUrlInput.value.trim().replace(/\/$/, '');
-        const user = apiUserInput.value.trim();
-        const tokenId = apiTokenIdInput.value.trim();
-        const secret = secretInput.value.trim();
-
-        if (!url || !user || !tokenId || !secret) {
-            saveStatus.textContent = 'Please fill in all fields.';
-            saveStatus.style.color = 'var(--error)';
-            return;
-        }
-
-        const fullToken = `${user}!${tokenId}=${secret}`;
-
-        await chrome.storage.local.set({
-            proxmoxUrl: url,
-            apiUser: user,
-            apiTokenId: tokenId,
-            apiSecret: secret,
-            apiToken: fullToken
-        });
-
-        saveStatus.textContent = 'Settings saved. Refreshing...';
-        saveStatus.style.color = 'var(--success)';
-        
-        // Request host permission
-        const origin = new URL(url).origin + '/*';
-        chrome.permissions.request({ origins: [origin] });
-
-        setTimeout(() => location.reload(), 1000);
-    });
-
     if (!settings.proxmoxUrl || !settings.apiToken) {
         loadingOverlay.classList.add('hidden');
         noAuthOverlay.classList.remove('hidden');
         return;
     }
 
-    const api = new ProxmoxAPI(settings.proxmoxUrl, settings.apiToken);
+    const api = new ProxmoxAPI(settings.proxmoxUrl, settings.apiToken, settings.failoverUrls || []);
     console.log('Fetching resources from:', settings.proxmoxUrl);
 
     try {
@@ -90,6 +36,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('Resources received:', resources.length);
         loadingOverlay.classList.add('hidden');
         renderResources(resources, api);
+        
+        // Asynchronously discover and update cluster nodes for failover
+        updateFailoverNodes(resources, settings.proxmoxUrl);
     } catch (error) {
         console.error('Proxmox API Error:', error);
         loadingOverlay.innerHTML = `
