@@ -11,6 +11,7 @@ This document contains all the text, metadata, and justifications required to su
 - **Category**: Developer Tools
 - **Additional Category**: Productivity
 - **Verified Website**: (Your GitHub Repo URL) https://github.com/d0dg3r/proxmux-manager
+- **Single Purpose Statement**: Provide a monitoring and management interface for Proxmox VE clusters directly within the browser.
 
 ---
 
