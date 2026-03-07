@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const apiUserInput = document.getElementById('api-user');
     const apiTokenIdInput = document.getElementById('api-tokenid');
     const apiSecretInput = document.getElementById('api-secret');
-    const saveBtn = document.getElementById('save-btn');
+    const saveBtn = document.getElementById('save-settings-btn');
     const status = document.getElementById('status');
     const toggleSecretBtn = document.getElementById('toggle-secret');
 
