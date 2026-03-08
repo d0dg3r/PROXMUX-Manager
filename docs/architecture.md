@@ -34,7 +34,12 @@ The extension uses a shared UI for both the browser action popup and the Chrome 
 Uses `chrome.storage.local` to store:
 - API Credentials (URL, Token, Secret).
 - Failover Node URLs (discovered dynamically).
-- User preferences (future).
+- User preferences (theme, display settings).
+
+Uses `localStorage` for popup session UX state:
+- Last search query.
+- Last active type/status filters.
+- Last expanded resource item.
 
 ## 4. Key Flows
 
@@ -52,7 +57,30 @@ Before opening a `novnc` or `shell` URL, the extension:
 3. Performs a fallback `fetch` with `credentials: 'include'` to double-check.
 4. If invalid, displays the **Login Required** overlay.
 
+### 4.3 Power Action Status Synchronization
+Power actions (`start`, `shutdown`, `stop`, `reboot`) are handled with a two-stage strategy:
+1. Send action to Proxmox (`vmAction` / `nodeAction`).
+2. Poll resource status endpoints (`/status/current` or node status) until the target state is confirmed.
+3. Store confirmed state in an in-memory override map (`pendingStatusOverrides`) keyed by resource identity.
+4. During list refresh (`/cluster/resources`), apply overrides to avoid stale cluster cache rollbacks.
+5. Retry refresh with backoff (3s, 6s, 12s) until cluster data catches up and overrides can be cleared.
+
+This prevents transient UI regressions where a resource successfully changed state but briefly reappeared with the previous state.
+
+### 4.4 Search and Filter UX Flow
+The popup top-bar search pipeline is designed for fast iterative filtering:
+1. User input updates `localStorage` and triggers immediate in-memory filtering.
+2. A context-aware clear control is shown only when a query exists.
+3. Search reset works via clear button and `Escape`, then re-renders the full filtered list.
+4. Filter group visibility is controlled by a collapsible toggle with an explicit active/collapsed visual state.
+5. Search, filters, and expanded row state are restored when the popup opens again.
+
 ## 5. Security Model
 - **Token Security**: API Tokens are stored locally in the browser's profile and are never transmitted to any third-party.
 - **Least Privilege**: The extension requests only necessary permissions (`storage`, `tabs`, `downloads`, `sidePanel`, `cookies`).
 - **Isolation**: All API calls are made from the local extension context.
+
+## 6. Quality and Release Verification
+- **E2E Testing**: Playwright test suite validates popup behavior in a controlled mock environment, including search reset and filter toggle interactions.
+- **Visual Asset Pipeline**: Store screenshots are generated from a deterministic mock UI (`store/mock/`) to keep dark/light captures consistent with released UX.
+- **Release Discipline**: Version bumps, docs updates, screenshot refresh, and local test validation are treated as mandatory release gates.

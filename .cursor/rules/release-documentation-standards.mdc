@@ -1,0 +1,37 @@
+---
+description: Mandatory release documentation and verification checklist
+alwaysApply: true
+---
+
+# Release Documentation Standards
+
+For every release preparation branch (for example `release/vX.Y.Z`), always complete these steps:
+
+1. Bump version consistently in:
+
+- `manifest.json`
+- `package.json`
+- `package-lock.json`
+- `options/options.html` (About version text)
+
+2. Update release documentation:
+
+- `CHANGELOG.md` with a new top release entry
+- `README.md` with new top release notes and current screenshot references
+- `docs/architecture.md` with relevant behavior changes
+- `store/ONBOARDING.md` with current store asset and submission guidance
+- Help text in `options/options.html` when behavior changes affect users
+
+3. Refresh store screenshots with `node store/generate_screenshots_ci.js` and verify all referenced files exist.
+
+4. Run local validation (`npm test`) before considering release prep complete.
+
+## Language Rule
+
+All project documentation must be written in English only, including:
+
+- `README.md`
+- `CHANGELOG.md`
+- `docs/architecture.md`
+- `store/ONBOARDING.md`
+- Release-related help and guide text

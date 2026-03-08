@@ -6,7 +6,7 @@
 
 - **Type:** Chrome Extension (Manifest V3), zero-build project (no transpilation or bundling)
 - **Primary Language:** JavaScript (ES6 modules)
-- **Current Version:** 1.1.1
+- **Current Version:** 1.1.3
 - **License:** MIT
 
 ---
@@ -206,7 +206,7 @@ Stores credentials in `chrome.storage.local`:
 
 ### Screenshots (`screenshots.yml`)
 
-- Generates Chrome Web Store screenshots (1280×800) from the mock environment.
+- Generates Chrome Web Store screenshots from the mock environment (`1280x800` and `640x400` variants).
 
 ---
 

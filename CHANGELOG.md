@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-03-09
+
+### Added
+- Search reset UX with a clear button in the popup search field.
+- Keyboard reset behavior for search input via `Escape`.
+- Additional store screenshot outputs in `640x400` alongside `1280x800`.
+
+### Changed
+- Refreshed store mock and screenshot generation flow to keep dark/light captures aligned with the current popup UI.
+- Updated E2E coverage for search clear/reset and filter toggle state behavior.
+
+### Fixed
+- Power action status refresh reliability by preserving confirmed target states until cluster resources catch up.
+- Search/filter top-bar layout collisions (filter toggle and clear button overlap).
+- Screenshot consistency between dark and light variants.
+
 ## [1.1.2] - 2026-03-08
 
 ### Added
@@ -72,3 +88,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.0.1]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.0.0-beta.2...v1.0.0
 [1.0.0-beta.2]: https://github.com/d0dg3r/PROXMUX-Manager/releases/tag/v1.0.0-beta.2
+[1.1.3]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.1.2...v1.1.3
+[1.1.2]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.1.1...v1.1.2
