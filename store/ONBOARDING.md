@@ -39,17 +39,19 @@ Perfect for DevOps engineers and home-server enthusiasts who need a fast, profes
 PROXMUX Manager ist die professionelle Chrome-Erweiterung für Proxmox VE Administratoren. Greifen Sie sofort auf Ihren Virtualisierungs-Cluster zu, um Nodes, VMs und Container zu überwachen, ohne Ihren aktuellen Tab zu verlassen.
 
 Hauptfunktionen:
-- **Interaktive Tags**: Automatische Erkennung und klickbare Filter-Pills für Ihre Cluster-Tags.
-- **Uptime-Anzeige**: Human-readable Uptime (z.B. 2d 5h) für alle laufenden Ressourcen auf einen Blick.
-- **Optimierte Überwachung**: Monitor-Status, OS-Typen und IP-Adressen direkt in der Liste.
-- **Tabbed Settings UI**: Strukturierte Einstellungen in den Bereichen "Allgemein", "Hilfe" und "Über".
+- **Interaktive Tags**: Entdecken und klicken Sie Cluster-weite Tags für eine sofortige kategorische Filterung.
+- **Uptime-Anzeige**: Echtzeit-Uptime in lesbarer Form (z. B. 2d 5h) für alle laufenden Ressourcen.
+- **Verbessertes Monitoring**: Sehen Sie VM/LXC-Status, OS-Typen und IP-Adressen auf einen Blick.
+- **Tabbed Settings UI**: Strukturierte Bereiche „General“, „Help“ und „About“ für bessere Konfiguration.
 - **Intelligente Konsolen**: Unterstützung für noVNC, SPICE (remote-viewer) und Node-Shells.
-- **Modernes Design**: Manuelle Wahl zwischen Dark-, Light-Mode oder Systemeinstellungen.
-- **Hochverfügbarkeit**: Automatische Node-Erkennung und nahtloses Cluster-Failover.
+- **Modernes Design**: Auswahl zwischen Dark, Light oder System-Theme.
+- **Hochverfügbarkeit**: Automatische Node-Erkennung im Cluster und nahtloses Failover.
 - **Sicher**: API-Token werden lokal gespeichert und verlassen niemals Ihren Browser.
 
-Perfekt für DevOps-Engineers und Home-Server-Enthusiasten, die eine schnelle, professionelle und sichere Lösung für ihre Proxmox-Infrastruktur suchen.
+Perfekt für DevOps Engineers und Home-Server-Enthusiasten, die eine schnelle, professionelle und sichere Lösung zur Verwaltung ihrer Proxmox-Infrastruktur benötigen.
 ```
+
+Use English as the canonical release-source text, then keep the German section synchronized for storefront localization.
 
 ---
 
@@ -103,5 +105,6 @@ Perfekt für DevOps-Engineers und Home-Server-Enthusiasten, die eine schnelle, p
 
 ## 5. Visual Assets Checklist
 - **Icon**: 128x128 pixels (provided in `icons/icon128.png`).
-- **Screenshots**: 1280x800 PNG (provided in `store/screenshot_dark.png` and `store/screenshot_light.png`).
+- **Screenshots (Primary Store Set)**: 1280x800 PNG (`store/screenshot_dark.png`, `store/screenshot_light.png`).
+- **Screenshots (Compact Variant)**: 640x400 PNG (`store/screenshot_dark_640x400.png`, `store/screenshot_light_640x400.png`).
 - **Marquee/Tile**: 440x280 pixels.

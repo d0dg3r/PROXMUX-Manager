@@ -27,6 +27,10 @@ A dedicated Chrome Extension for Proxmox VE cluster management, providing instan
 | :---: | :---: |
 | ![Dark Mode](store/screenshot_dark.png) | ![Light Mode](store/screenshot_light.png) |
 
+Additional compact variants for store and docs:
+- `store/screenshot_dark_640x400.png`
+- `store/screenshot_light_640x400.png`
+
 ## Installation
 
 ### From Chrome Web Store (Recommended)
@@ -55,7 +59,14 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
 - Proxmox VE 6.x or newer.
 - API Token with appropriate permissions (VM.Console and Sys.Audit for node discovery).
 
-## Version 1.1.2 Release Notes (New!)
+## Version 1.1.3 Release Notes (New!)
+- **Reliable Power State Sync**: Improved status refresh flow after start/stop/shutdown/reboot actions to avoid stale status rollbacks.
+- **Search Reset UX**: Added clear-search support in the popup search field plus keyboard reset with `Escape`.
+- **Top-Bar Layout Fix**: Fixed overlap issues between filter toggle and search clear control.
+- **E2E Coverage Expansion**: Added tests for search clear/reset and filter toggle active/collapsed behavior.
+- **Store Assets Refresh**: Updated screenshot pipeline and generated both `1280x800` and `640x400` dark/light variants.
+
+## Version 1.1.2 Release Notes
 - **Power Features**: Introduced **Interactive Tags** and **Uptime Display** for better cluster oversight.
 - **Settings Refactor**: New **Tabbed UI** for settings with expanded **Help** guides (SPICE, SSH, SSL).
 - **Theme Control**: Manual theme overrides (Dark/Light/Auto).
