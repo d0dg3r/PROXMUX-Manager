@@ -1,8 +1,11 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 test.describe('PROXMUX Popup (Mock Environment)', () => {
-  const mockPath = 'file://' + path.resolve(__dirname, '../store/mock/mock.html');
+  const mockPath = pathToFileURL(
+    path.resolve(__dirname, '../store/mock/mock.html')
+  ).href;
 
   test.beforeEach(async ({ page }) => {
     await page.goto(mockPath);
