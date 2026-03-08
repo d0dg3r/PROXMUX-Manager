@@ -144,7 +144,7 @@ header {
     flex-shrink: 0;
 }
 
-#settings-btn, #sidepanel-btn, #refresh-btn, #theme-toggle-btn, #display-settings-btn {
+#sidepanel-btn, #refresh-btn, #theme-toggle-btn, #display-settings-btn {
     background: transparent;
     border: none;
     color: var(--text-secondary);
@@ -164,7 +164,7 @@ header {
     flex-shrink: 0;
 }
 
-#settings-btn:hover, #sidepanel-btn:hover, #refresh-btn:hover, #theme-toggle-btn:hover, #display-settings-btn:hover {
+#sidepanel-btn:hover, #refresh-btn:hover, #theme-toggle-btn:hover, #display-settings-btn:hover {
     color: var(--accent);
     background-color: var(--hover-bg);
 }
@@ -362,9 +362,32 @@ header {
 .settings-footer {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
     margin-top: 12px;
     padding-top: 8px;
     border-top: 1px solid var(--border);
+}
+
+.settings-footer .text-btn {
+    margin-left: auto;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    line-height: 1;
+    white-space: nowrap;
+    background-color: var(--tag-bg);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.settings-footer .text-btn span {
+    white-space: nowrap;
+}
+
+.settings-footer #settings-btn {
+    width: auto;
+    height: auto;
+    min-height: 32px;
 }
 
 .text-btn {
@@ -404,6 +427,12 @@ header {
 
 .setting-item input {
     cursor: pointer;
+    accent-color: var(--brand-mux);
+}
+
+.setting-item input:focus-visible {
+    outline: 2px solid hsla(25, 80%, 50%, 0.45);
+    outline-offset: 2px;
 }
 
 @keyframes fadeIn {
