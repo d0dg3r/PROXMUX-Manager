@@ -23,7 +23,8 @@ test.describe('PROXMUX Popup (Mock Environment)', () => {
     const count = await items.count();
     expect(count).toBeGreaterThanOrEqual(10);
     await expect(page.locator('.resource-item .name').first()).toContainText('pve-node-01');
-    await expect(page.locator('.resource-item .name')).toContainText(['pve-node-01', 'docker', 'gitea']);
+    const resourceNames = await page.locator('.resource-item .name').allTextContents();
+    expect(resourceNames).toEqual(expect.arrayContaining(['pve-node-01', 'docker', 'gitea']));
   });
 
   test('should allow typing in the search input', async ({ page }) => {
