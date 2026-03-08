@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const themeSelect = document.getElementById('theme-select');
     const saveBtn = document.getElementById('save-settings-btn');
     const testBtn = document.getElementById('test-connection-btn');
+    const closeBtn = document.getElementById('close-settings-btn');
     const status = document.getElementById('status');
     const toggleSecretBtn = document.getElementById('toggle-secret');
 
@@ -143,6 +144,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             status.textContent = `Connection failed: ${error.message}`;
             status.style.color = 'var(--error)';
         }
+    });
+
+    // Close settings page/tab
+    closeBtn.addEventListener('click', () => {
+        if (chrome?.tabs?.getCurrent && chrome?.tabs?.remove) {
+            chrome.tabs.getCurrent((tab) => {
+                if (tab?.id) {
+                    chrome.tabs.remove(tab.id);
+                } else {
+                    window.close();
+                }
+            });
+            return;
+        }
+        window.close();
     });
 });
 

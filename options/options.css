@@ -295,6 +295,18 @@ h1.branded-title .title-suffix {
     background-color: var(--border);
 }
 
+.close-btn {
+    width: auto;
+    min-width: 108px;
+    background-color: transparent;
+    color: var(--text-secondary);
+}
+
+.close-btn:hover {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
+}
+
 .help-item {
     margin-bottom: 24px;
 }
