@@ -68,7 +68,10 @@ Perfekt für DevOps-Engineers und Home-Server-Enthusiasten, die eine schnelle, p
 3. **`downloads` & `downloads.open`**:
    - *Justification*: Necessary to generate and automatically launch SPICE configuration files (.vv) for external viewer applications like remote-viewer.
 
-4. **Host Permissions (`https://*/*`)**:
+4. **`cookies`**:
+   - *Justification*: Required to verify if the user has an active Proxmox Web UI session cookie. This prevents 401 errors when opening interactive consoles, ensuring a seamless user experience.
+
+5. **Host Permissions (`https://*/*`)**:
    - *Justification*: Needed to communicate with self-hosted Proxmox VE API endpoints. The extension only sends requests to URLs explicitly configured by the user.
 
 ### User Data Policy:
