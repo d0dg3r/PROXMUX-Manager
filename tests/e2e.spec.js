@@ -21,15 +21,10 @@ test.describe('PROXMUX Popup (Mock Environment)', () => {
     await expect(items.first()).toContainText('pve-node-01');
   });
 
-  test('should filter resources by search query', async ({ page }) => {
+  test('should allow typing in the search input', async ({ page }) => {
     const searchInput = page.locator('#search-input');
     await searchInput.fill('ubuntu');
     
-    // We expect only 1 item to remain (Ubuntu-Server-22.04)
-    const visibleItems = page.locator('.resource-item:not(.hidden)');
-    // Note: mock.html doesn't have the JS filtering, but we are testing if the UI elements are there.
-    // To truly test logic, we'd need to inject or use the real popup.js.
-    // For this E2E, we verify UI presence.
     await expect(searchInput).toHaveValue('ubuntu');
   });
 
