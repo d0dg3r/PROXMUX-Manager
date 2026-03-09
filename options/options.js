@@ -23,6 +23,86 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     initI18n();
 
+    function normalizeAndValidateHttpsUrl(input) {
+        const raw = (input || '').trim();
+        if (!raw) {
+            return { ok: false, error: 'Please enter a Proxmox URL.' };
+        }
+
+        const withScheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(raw) ? raw : `https://${raw}`;
+        let parsed;
+
+        try {
+            parsed = new URL(withScheme);
+        } catch (e) {
+            return { ok: false, error: 'Invalid URL. Example: https://proxmox.example.com:8006' };
+        }
+
+        if (parsed.protocol !== 'https:') {
+            return { ok: false, error: 'Please use an HTTPS URL (Proxmox default).' };
+        }
+
+        return { ok: true, url: parsed.href.replace(/\/$/, ''), originPattern: `${parsed.origin}/*` };
+    }
+
+    function containsPermission(permissions) {
+        return new Promise((resolve, reject) => {
+            chrome.permissions.contains(permissions, (granted) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                resolve(granted);
+            });
+        });
+    }
+
+    function requestPermission(permissions) {
+        return new Promise((resolve, reject) => {
+            chrome.permissions.request(permissions, (granted) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                resolve(granted);
+            });
+        });
+    }
+
+    async function ensureHostPermission(originPattern) {
+        const permissions = { origins: [originPattern] };
+        const alreadyGranted = await containsPermission(permissions);
+        if (alreadyGranted) return true;
+        return requestPermission(permissions);
+    }
+
+    function describeConnectionError(error) {
+        const message = error?.message || 'Unknown error';
+        const lower = message.toLowerCase();
+
+        if (lower.includes('permission denied')) {
+            return `${message}. Please allow site access when prompted.`;
+        }
+
+        if (lower.includes('https url')) {
+            return message;
+        }
+
+        if (
+            lower.includes('failed to fetch') ||
+            lower.includes('networkerror') ||
+            lower.includes('network request')
+        ) {
+            return 'Network request blocked or unreachable. On Windows, this is often an untrusted Proxmox TLS certificate. Open the Proxmox URL in Chrome once, trust/accept the certificate, then retry.';
+        }
+
+        if (lower.includes('timeout')) {
+            return `${message}. Check VPN/LAN reachability and firewall rules.`;
+        }
+
+        return message;
+    }
+
     // Tab Management
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
@@ -77,18 +157,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Save settings
     saveBtn.addEventListener('click', async () => {
-        const url = proxmoxUrlInput.value.trim().replace(/\/$/, '');
+        const normalized = normalizeAndValidateHttpsUrl(proxmoxUrlInput.value);
         const user = apiUserInput.value.trim();
         const tokenId = apiTokenIdInput.value.trim();
         const secret = apiSecretInput.value.trim();
         const theme = themeSelect.value;
 
-        if (!url || !user || !tokenId || !secret) {
-            status.textContent = 'Please fill in all fields.';
+        if (!normalized.ok || !user || !tokenId || !secret) {
+            status.textContent = normalized.ok ? 'Please fill in all fields.' : normalized.error;
             status.style.color = 'var(--error)';
             return;
         }
 
+        const url = normalized.url;
         const fullToken = `${user}!${tokenId}=${secret}`;
 
         await chrome.storage.local.set({
@@ -105,10 +186,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Request host permission
         try {
-            const origin = new URL(url).origin + '/*';
-            chrome.permissions.request({ origins: [origin] });
+            await ensureHostPermission(normalized.originPattern);
         } catch (e) {
-            console.error('Invalid URL for permissions:', e);
+            console.error('Host permission request failed:', e);
         }
 
         setTimeout(() => {
@@ -118,13 +198,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Test Connection
     testBtn.addEventListener('click', async () => {
-        const url = proxmoxUrlInput.value.trim().replace(/\/$/, '');
+        const normalized = normalizeAndValidateHttpsUrl(proxmoxUrlInput.value);
         const user = apiUserInput.value.trim();
         const tokenId = apiTokenIdInput.value.trim();
         const secret = apiSecretInput.value.trim();
 
-        if (!url || !user || !tokenId || !secret) {
-            status.textContent = 'Please fill in all fields to test.';
+        if (!normalized.ok || !user || !tokenId || !secret) {
+            status.textContent = normalized.ok ? 'Please fill in all fields to test.' : normalized.error;
             status.style.color = 'var(--error)';
             return;
         }
@@ -133,15 +213,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         status.style.color = 'var(--text-secondary)';
 
         try {
+            const permissionGranted = await ensureHostPermission(normalized.originPattern);
+            if (!permissionGranted) {
+                throw new Error(`Host permission denied for ${normalized.originPattern}`);
+            }
+
             const fullToken = `${user}!${tokenId}=${secret}`;
-            const api = new ProxmoxAPI(url, fullToken);
+            const api = new ProxmoxAPI(normalized.url, fullToken);
             const version = await api.fetch('/version');
 
             status.textContent = `Connection successful! Proxmox Version: ${version.version}`;
             status.style.color = 'var(--success)';
         } catch (error) {
             console.error('Test Connection Failed:', error);
-            status.textContent = `Connection failed: ${error.message}`;
+            status.textContent = `Connection failed: ${describeConnectionError(error)}`;
             status.style.color = 'var(--error)';
         }
     });
