@@ -681,17 +681,75 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             const url = api.getConsoleUrl(node, type, vmid, name);
-            if (url) {
-                console.log(`[Popup] Opening console URL: ${url}`);
-                debugStatus.textContent = 'Opening console...';
-                chrome.tabs.create({ url });
-                // Hide status after a short delay
-                setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
+            if (!url) return;
+
+            const tabSettings = await chrome.storage.local.get(['consoleTabMode']);
+            const mode = tabSettings.consoleTabMode || 'duplicate';
+
+            if (mode === 'single') {
+                // Reuse any existing Proxmox console tab (novnc or xtermjs)
+                const tabs = await chrome.tabs.query({ url: `${settings.proxmoxUrl}/*` });
+                const consoleTab = tabs.find(t => {
+                    try {
+                        const tabUrl = new URL(t.url);
+                        const params = tabUrl.searchParams;
+                        const hasConsoleParam = params.has('console');
+                        const isNovnc = params.get('novnc') === '1';
+                        const isXtermjs = params.get('xtermjs') === '1';
+                        return hasConsoleParam && (isNovnc || isXtermjs);
+                    } catch (e) {
+                        // Ignore tabs with URLs that cannot be parsed
+                        return false;
+                    }
+                });
+                if (consoleTab) {
+                    await chrome.tabs.update(consoleTab.id, { url, active: true });
+                    debugStatus.textContent = 'Updated existing console tab.';
+                    setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
+                    return;
+                }
+            } else if (mode === 'duplicate') {
+                // Focus existing tab for this specific resource
+                const tabs = await chrome.tabs.query({ url: `${settings.proxmoxUrl}/*` });
+                const existingTab = tabs.find(t => {
+                    try {
+                        const tabUrl = new URL(t.url);
+                        const params = tabUrl.searchParams;
+
+                        const hasConsoleParam = params.has('console');
+                        const isNovnc = params.get('novnc') === '1';
+                        const isXtermjs = params.get('xtermjs') === '1';
+                        if (!hasConsoleParam || (!isNovnc && !isXtermjs)) {
+                            return false;
+                        }
+
+                        if (vmid) {
+                            // Match exact VMID
+                            return params.get('vmid') === String(vmid);
+                        }
+
+                        // Node console: match exact node name
+                        return params.get('node') === node;
+                    } catch (e) {
+                        // Ignore tabs with URLs that cannot be parsed
+                        return false;
+                    }
+                });
+                if (existingTab) {
+                    await chrome.tabs.update(existingTab.id, { active: true });
+                    debugStatus.textContent = 'Focusing existing tab.';
+                    setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
+                    return;
+                }
             }
+
+            console.log(`[Popup] Opening console URL: ${url}`);
+            debugStatus.textContent = 'Opening console...';
+            chrome.tabs.create({ url });
+            setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
         } catch (e) {
             console.error('[Popup] Failed to open console:', e);
             debugStatus.textContent = `Error: ${e.message}`;
-            // Fallback
             const url = api.getConsoleUrl(node, type, vmid, name);
             if (url) chrome.tabs.create({ url });
         }

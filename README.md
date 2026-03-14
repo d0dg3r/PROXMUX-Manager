@@ -59,7 +59,14 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
 - Proxmox VE 6.x or newer.
 - API Token with appropriate permissions (VM.Console and Sys.Audit for node discovery).
 
-## Version 1.1.3 Release Notes (New!)
+## What's New in v1.1.4 🚀
+
+- **Node Management**: Nodes now display management IP addresses and offer direct SSH connectivity.
+- **Improved Terminal Experience**: Replaced noVNC with `xterm.js` for text-based shells (Node & LXC) for better scaling and clipboard support.
+- **Tab Behavior Settings**: Choose how console tabs are opened (New Tab, Reuse, or Focus Existing).
+- **Duplicate Prevention**: Intelligently focus existing console tabs for the same machine (Default).
+
+## Version 1.1.3 Release Notes
 - **Reliable Power State Sync**: Improved status refresh flow after start/stop/shutdown/reboot actions to avoid stale status rollbacks.
 - **Search Reset UX**: Added clear-search support in the popup search field plus keyboard reset with `Escape`.
 - **Top-Bar Layout Fix**: Fixed overlap issues between filter toggle and search clear control.
