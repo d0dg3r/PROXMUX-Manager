@@ -689,7 +689,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (mode === 'single') {
                 // Reuse any existing Proxmox console tab (novnc or xtermjs)
                 const tabs = await chrome.tabs.query({ url: `${settings.proxmoxUrl}/*` });
-                const consoleTab = tabs.find(t => t.url.includes('console=') && (t.url.includes('novnc=1') || t.url.includes('xtermjs=1')));
+                const consoleTab = tabs.find(t => {
+                    try {
+                        const tabUrl = new URL(t.url);
+                        const params = tabUrl.searchParams;
+                        const hasConsoleParam = params.has('console');
+                        const isNovnc = params.get('novnc') === '1';
+                        const isXtermjs = params.get('xtermjs') === '1';
+                        return hasConsoleParam && (isNovnc || isXtermjs);
+                    } catch (e) {
+                        // Ignore tabs with URLs that cannot be parsed
+                        return false;
+                    }
+                });
                 if (consoleTab) {
                     await chrome.tabs.update(consoleTab.id, { url, active: true });
                     debugStatus.textContent = 'Updated existing console tab.';
@@ -698,13 +710,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             } else if (mode === 'duplicate') {
                 // Focus existing tab for this specific resource
-                const resourceIdParam = vmid ? `vmid=${vmid}` : `node=${node}`;
                 const tabs = await chrome.tabs.query({ url: `${settings.proxmoxUrl}/*` });
-                const existingTab = tabs.find(t => 
-                    t.url.includes(resourceIdParam) && 
-                    t.url.includes('console=') && 
-                    (t.url.includes('novnc=1') || t.url.includes('xtermjs=1'))
-                );
+                const existingTab = tabs.find(t => {
+                    try {
+                        const tabUrl = new URL(t.url);
+                        const params = tabUrl.searchParams;
+
+                        const hasConsoleParam = params.has('console');
+                        const isNovnc = params.get('novnc') === '1';
+                        const isXtermjs = params.get('xtermjs') === '1';
+                        if (!hasConsoleParam || (!isNovnc && !isXtermjs)) {
+                            return false;
+                        }
+
+                        if (vmid) {
+                            // Match exact VMID
+                            return params.get('vmid') === String(vmid);
+                        }
+
+                        // Node console: match exact node name
+                        return params.get('node') === node;
+                    } catch (e) {
+                        // Ignore tabs with URLs that cannot be parsed
+                        return false;
+                    }
+                });
                 if (existingTab) {
                     await chrome.tabs.update(existingTab.id, { active: true });
                     debugStatus.textContent = 'Focusing existing tab.';
