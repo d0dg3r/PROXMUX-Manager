@@ -95,7 +95,7 @@ If PROXMUX only shows nodes but not VMs/LXCs, validate token rights first (`Sys.
 - Regenerate with `node store/generate_screenshots_ci.js` when UI changes.
 - Commit updated `store/screenshot_*.png` files in the same release branch.
 
-## What's New in v1.2.0-beta.1
+## What's New in v1.2.0-beta.2
 
 - **New Action Behavior**: Toolbar click behavior is now configurable (Side Panel or Floating Window).
 - **In-View Settings Workflow**: Advanced settings open inline inside side panel/floating view, with quick toggle and consistent styling.
