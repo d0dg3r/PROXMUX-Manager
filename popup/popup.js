@@ -1,18 +1,52 @@
 import { ProxmoxAPI } from '../lib/proxmox-api.js';
 import { getCommunityScriptsCatalog, getCommunityScriptDetails, getCommunityScriptGuide } from '../lib/community-scripts.js';
 import { buildInstallCommandForScripts } from '../lib/install-command.js';
+import { openOrFocusFloatingWindow } from '../lib/window-launcher.js';
+
+const LAST_BROWSER_WINDOW_ID_KEY = 'lastBrowserWindowId';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const resourceList = document.getElementById('resource-list');
     const loadingOverlay = document.getElementById('loading');
     const noAuthOverlay = document.getElementById('no-auth');
-    const settingsBtn = document.getElementById('settings-btn');
     const sidepanelBtn = document.getElementById('sidepanel-btn');
+    const floatingBtn = document.getElementById('floating-btn');
+    const closeWindowBtn = document.getElementById('close-window-btn');
     const refreshBtn = document.getElementById('refresh-btn');
     const themeToggleBtn = document.getElementById('theme-toggle-btn');
     const themeIcon = document.getElementById('theme-icon');
     const openSettingsOverlayBtn = document.getElementById('open-settings-overlay');
+    const mainViewContent = document.getElementById('main-view-content');
+    const inlineSettingsView = document.getElementById('inline-settings-view');
+    const inlineProxmoxUrlInput = document.getElementById('inline-proxmox-url');
+    const inlineApiUserInput = document.getElementById('inline-api-user');
+    const inlineApiTokenIdInput = document.getElementById('inline-api-tokenid');
+    const inlineApiSecretInput = document.getElementById('inline-api-secret');
+    const inlineThemeSelect = document.getElementById('inline-theme-select');
+    const inlineTabModeSelect = document.getElementById('inline-tab-mode-select');
+    const inlineDefaultActionClickModeSelect = document.getElementById('inline-default-action-click-mode');
+    const inlineToggleSecretBtn = document.getElementById('inline-toggle-secret');
+    const inlineEyeIcon = document.getElementById('inline-eye-icon');
+    const inlineSaveSettingsBtn = document.getElementById('inline-save-settings-btn');
+    const inlineTestConnectionBtn = document.getElementById('inline-test-connection-btn');
+    const inlineSettingsStatus = document.getElementById('inline-settings-status');
     const template = document.getElementById('resource-item-template');
+    const currentView = new URLSearchParams(window.location.search).get('view') || 'none';
+    let startupWindowType = 'unknown';
+    let startupWindowId = null;
+    try {
+        const startupWindow = await chrome.windows.getCurrent();
+        startupWindowType = startupWindow?.type || 'unknown';
+        startupWindowId = startupWindow?.id ?? null;
+    } catch (_error) {
+        // Keep defaults for debug logging.
+    }
+    if (startupWindowType === 'popup' && closeWindowBtn) {
+        closeWindowBtn.classList.remove('hidden');
+    }
+    closeWindowBtn?.addEventListener('click', () => {
+        window.close();
+    });
 
     // i18n Initialization
     function initI18n() {
@@ -64,8 +98,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     let allResources = [];
+    let settings = {};
     const pendingStatusOverrides = new Map();
     const tagFiltersContainer = document.getElementById('tag-filters');
+    const tagFiltersSection = tagFiltersContainer?.closest('.filter-section-tags');
     let activeFilters = {
         type: 'all', // 'all', 'node', 'qemu', 'lxc'
         status: 'all', // 'all', 'running', 'stopped'
@@ -113,8 +149,127 @@ document.addEventListener('DOMContentLoaded', async () => {
     const NEW_TAB_READY_TIMEOUT_MS = 650;
     const NEW_TAB_SETTLE_DELAY_MS = 250;
 
-    // UI Event Listeners
-    settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+    function setInlineSettingsStatus(message, level = 'info') {
+        inlineSettingsStatus.textContent = message || '';
+        if (level === 'error') {
+            inlineSettingsStatus.style.color = 'var(--error)';
+        } else if (level === 'success') {
+            inlineSettingsStatus.style.color = 'var(--success)';
+        } else {
+            inlineSettingsStatus.style.color = 'var(--text-secondary)';
+        }
+    }
+
+    function setInlineViewMode(isSettingsView) {
+        document.body.classList.toggle('settings-view-active', isSettingsView);
+        inlineSettingsView.classList.toggle('hidden', !isSettingsView);
+        mainViewContent.classList.toggle('hidden', isSettingsView);
+        const scriptsPanel = document.querySelector('.scripts-panel');
+        const saveBtn = document.getElementById('inline-save-settings-btn');
+        const scriptsPanelStyle = scriptsPanel ? window.getComputedStyle(scriptsPanel) : null;
+        const saveBtnStyle = saveBtn ? window.getComputedStyle(saveBtn) : null;
+        if (!isSettingsView) {
+            setInlineSettingsStatus('');
+        }
+    }
+
+    function normalizeAndValidateHttpsUrl(input) {
+        const raw = (input || '').trim();
+        if (!raw) {
+            return { ok: false, error: 'Please enter a Proxmox URL.' };
+        }
+
+        const withScheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(raw) ? raw : `https://${raw}`;
+        let parsed;
+        try {
+            parsed = new URL(withScheme);
+        } catch (_error) {
+            return { ok: false, error: 'Invalid URL. Example: https://proxmox.example.com:8006' };
+        }
+
+        if (parsed.protocol !== 'https:') {
+            return { ok: false, error: 'Please use an HTTPS URL (Proxmox default).' };
+        }
+
+        return { ok: true, url: parsed.href.replace(/\/$/, ''), originPattern: `${parsed.origin}/*` };
+    }
+
+    function containsPermission(permissions) {
+        return new Promise((resolve, reject) => {
+            chrome.permissions.contains(permissions, (granted) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                resolve(granted);
+            });
+        });
+    }
+
+    function requestPermission(permissions) {
+        return new Promise((resolve, reject) => {
+            chrome.permissions.request(permissions, (granted) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                resolve(granted);
+            });
+        });
+    }
+
+    async function ensureHostPermission(originPattern) {
+        const permissions = { origins: [originPattern] };
+        const alreadyGranted = await containsPermission(permissions);
+        if (alreadyGranted) return true;
+        return requestPermission(permissions);
+    }
+
+    function describeConnectionError(error) {
+        const message = error?.message || 'Unknown error';
+        const lower = message.toLowerCase();
+
+        if (lower.includes('permission denied')) {
+            return `${message}. Please allow site access when prompted.`;
+        }
+        if (lower.includes('https url')) {
+            return message;
+        }
+        if (
+            lower.includes('failed to fetch') ||
+            lower.includes('networkerror') ||
+            lower.includes('network request')
+        ) {
+            return 'Network request blocked or unreachable. Open the Proxmox URL in Chrome once, trust/accept the certificate, then retry.';
+        }
+        if (lower.includes('timeout')) {
+            return `${message}. Check VPN/LAN reachability and firewall rules.`;
+        }
+        return message;
+    }
+
+    function populateInlineSettingsFields() {
+        inlineProxmoxUrlInput.value = settings.proxmoxUrl || '';
+        inlineApiUserInput.value = settings.apiUser || '';
+        inlineApiTokenIdInput.value = settings.apiTokenId || '';
+        inlineApiSecretInput.value = settings.apiSecret || '';
+        inlineThemeSelect.value = settings.theme || 'auto';
+        inlineTabModeSelect.value = settings.consoleTabMode || 'duplicate';
+        inlineDefaultActionClickModeSelect.value = ['sidepanel', 'floating'].includes(settings.defaultActionClickMode)
+            ? settings.defaultActionClickMode
+            : 'sidepanel';
+    }
+
+    function openInlineSettingsView(trigger) {
+        const scriptsPanel = document.querySelector('.scripts-panel');
+        const scriptsInsideMain = Boolean(scriptsPanel && mainViewContent && mainViewContent.contains(scriptsPanel));
+        populateInlineSettingsFields();
+        setInlineViewMode(true);
+    }
+
+    function closeInlineSettingsView() {
+        setInlineViewMode(false);
+    }
 
     const updateSearchClearState = () => {
         searchClearBtn.classList.toggle('hidden', !searchInput.value.trim());
@@ -185,11 +340,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     
     sidepanelBtn.addEventListener('click', async () => {
+        const currentView = new URLSearchParams(window.location.search).get('view');
         const currentWindow = await chrome.windows.getCurrent();
-        chrome.sidePanel.open({ windowId: currentWindow.id });
+        let targetWindowId = currentWindow?.id ?? null;
+        if (currentWindow?.type === 'popup') {
+            const storedWindow = await chrome.storage.local.get([LAST_BROWSER_WINDOW_ID_KEY]);
+            const candidateId = storedWindow[LAST_BROWSER_WINDOW_ID_KEY];
+            if (Number.isInteger(candidateId)) {
+                targetWindowId = candidateId;
+            }
+        } else if (Number.isInteger(currentWindow?.id)) {
+            await chrome.storage.local.set({ [LAST_BROWSER_WINDOW_ID_KEY]: currentWindow.id });
+        }
+        try {
+            await chrome.sidePanel.open({ windowId: targetWindowId });
+        } catch (error) {
+        }
         window.close(); // Close the popup
     });
-    openSettingsOverlayBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+    floatingBtn.addEventListener('click', async () => {
+        const currentView = new URLSearchParams(window.location.search).get('view');
+        const currentWindow = await chrome.windows.getCurrent();
+        if (currentWindow?.type === 'normal' && Number.isInteger(currentWindow?.id)) {
+            await chrome.storage.local.set({ [LAST_BROWSER_WINDOW_ID_KEY]: currentWindow.id });
+        }
+        await openOrFocusFloatingWindow();
+        if (currentView === 'popup') {
+            window.close();
+            return;
+        }
+        window.close();
+    });
+    openSettingsOverlayBtn.addEventListener('click', () => {
+        openInlineSettingsView('overlay_settings_button');
+    });
     refreshBtn.addEventListener('click', () => {
         localStorage.removeItem('lastActiveResource');
         currentExpandedId = null;
@@ -222,23 +406,120 @@ document.addEventListener('DOMContentLoaded', async () => {
     filterToggleBtn.classList.toggle('active', !collapsibleFilters.classList.contains('collapsed'));
 
     displaySettingsBtn.addEventListener('click', () => {
-        displaySettingsMenu.classList.toggle('hidden');
+        const isSettingsViewOpen = !inlineSettingsView.classList.contains('hidden');
+        if (isSettingsViewOpen) {
+            closeInlineSettingsView();
+            return;
+        }
+        openInlineSettingsView('display_settings_gear');
     });
 
-    // Close settings menu when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!displaySettingsMenu.contains(e.target) && !displaySettingsBtn.contains(e.target)) {
-            displaySettingsMenu.classList.add('hidden');
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const isSettingsViewOpen = !inlineSettingsView.classList.contains('hidden');
+        if (!isSettingsViewOpen) return;
+        event.preventDefault();
+        closeInlineSettingsView();
+    });
+
+    inlineToggleSecretBtn.addEventListener('click', () => {
+        const isPassword = inlineApiSecretInput.type === 'password';
+        inlineApiSecretInput.type = isPassword ? 'text' : 'password';
+        inlineEyeIcon.innerHTML = isPassword
+            ? '<path fill="currentColor" d="M12,17.5C14.33,17.5 16.31,16.04 17.11,14H1.5L9,14H15.11C14.31,16.04 12.33,17.5 12,17.5M12,5C7,5 2.73,8.11 1,12.5C2.73,16.89 7,20 12,20C17,20 21.27,16.89 23,12.5C21.27,8.11 17,5 12,5M12,18.5C9.67,18.5 7.69,17.04 6.89,15H17.11C16.31,17.04 14.33,18.5 12,18.5Z"/>'
+            : '<path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/>';
+    });
+
+    inlineThemeSelect.addEventListener('change', () => {
+        applyTheme(inlineThemeSelect.value);
+    });
+
+    inlineSaveSettingsBtn.addEventListener('click', async () => {
+        const normalized = normalizeAndValidateHttpsUrl(inlineProxmoxUrlInput.value);
+        const user = inlineApiUserInput.value.trim();
+        const tokenId = inlineApiTokenIdInput.value.trim();
+        const secret = inlineApiSecretInput.value.trim();
+
+        if (!normalized.ok || !user || !tokenId || !secret) {
+            setInlineSettingsStatus(normalized.ok ? 'Please fill in all fields.' : normalized.error, 'error');
+            return;
+        }
+
+        const payload = {
+            proxmoxUrl: normalized.url,
+            apiUser: user,
+            apiTokenId: tokenId,
+            apiSecret: secret,
+            apiToken: `${user}!${tokenId}=${secret}`,
+            theme: inlineThemeSelect.value,
+            consoleTabMode: inlineTabModeSelect.value,
+            defaultActionClickMode: inlineDefaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel'
+        };
+
+        await chrome.storage.local.set(payload);
+        settings = { ...settings, ...payload };
+        applyTheme(payload.theme);
+        setInlineSettingsStatus('Settings saved successfully!', 'success');
+        try {
+            await ensureHostPermission(normalized.originPattern);
+        } catch (_error) {
+            // Permission prompt may be dismissed; save still succeeded.
         }
     });
 
+    inlineTestConnectionBtn.addEventListener('click', async () => {
+        const normalized = normalizeAndValidateHttpsUrl(inlineProxmoxUrlInput.value);
+        const user = inlineApiUserInput.value.trim();
+        const tokenId = inlineApiTokenIdInput.value.trim();
+        const secret = inlineApiSecretInput.value.trim();
+
+        if (!normalized.ok || !user || !tokenId || !secret) {
+            setInlineSettingsStatus(normalized.ok ? 'Please fill in all fields to test.' : normalized.error, 'error');
+            return;
+        }
+
+        setInlineSettingsStatus('Testing connection...', 'info');
+        try {
+            const permissionGranted = await ensureHostPermission(normalized.originPattern);
+            if (!permissionGranted) {
+                throw new Error(`Host permission denied for ${normalized.originPattern}`);
+            }
+            const api = new ProxmoxAPI(normalized.url, `${user}!${tokenId}=${secret}`);
+            const version = await api.fetch('/version');
+            setInlineSettingsStatus(`Connection successful! Proxmox Version: ${version.version}`, 'success');
+        } catch (error) {
+            setInlineSettingsStatus(`Connection failed: ${describeConnectionError(error)}`, 'error');
+        }
+    });
+
+    const DISPLAY_SETTING_KEYS = ['uptime', 'ip', 'os', 'vmid', 'tags'];
+    const displaySettingCheckboxes = DISPLAY_SETTING_KEYS.reduce((acc, key) => {
+        const element = document.getElementById(`show-${key}`);
+        if (element) acc[key] = element;
+        return acc;
+    }, {});
+
+    async function persistDisplaySettings() {
+        await chrome.storage.local.set({ displaySettings });
+    }
+
+    function syncDisplaySettingsCheckboxes() {
+        DISPLAY_SETTING_KEYS.forEach((setting) => {
+            const checkbox = displaySettingCheckboxes[setting];
+            if (checkbox) {
+                checkbox.checked = Boolean(displaySettings[setting]);
+            }
+        });
+    }
+
     // Handle Display Settings Changes
-    ['uptime', 'ip', 'os', 'vmid', 'tags'].forEach(setting => {
-        const checkbox = document.getElementById(`show-${setting}`);
+    DISPLAY_SETTING_KEYS.forEach(setting => {
+        const checkbox = displaySettingCheckboxes[setting];
+        if (!checkbox) return;
         checkbox.addEventListener('change', async () => {
             displaySettings[setting] = checkbox.checked;
             applyDisplaySettings();
-            await chrome.storage.local.set({ displaySettings });
+            await persistDisplaySettings();
         });
     });
 
@@ -628,16 +909,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         'defaultScriptNode',
         'scriptsPanelCollapsed'
     ]);
-    const settings = stored;
+    settings = stored;
+    populateInlineSettingsFields();
     
     if (settings.displaySettings) {
         displaySettings = settings.displaySettings;
-        // Update checkboxes
-        Object.keys(displaySettings).forEach(s => {
-            const cb = document.getElementById(`show-${s}`);
-            if (cb) cb.checked = displaySettings[s];
-        });
     }
+    syncDisplaySettingsCheckboxes();
     applyDisplaySettings();
     
     if (settings.theme) {
@@ -1592,11 +1870,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (allTags.size === 0) {
             tagFiltersContainer.classList.add('hidden');
+            tagFiltersSection?.classList.add('hidden');
             return;
         }
 
         tagFiltersContainer.innerHTML = '';
         tagFiltersContainer.classList.remove('hidden');
+        tagFiltersSection?.classList.remove('hidden');
 
         // Sort tags alphabetically
         const sortedTags = Array.from(allTags).sort();

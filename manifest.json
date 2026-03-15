@@ -20,8 +20,11 @@
   "side_panel": {
     "default_path": "popup/popup.html"
   },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "action": {
-    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "store/proxmux_logo.png",
       "48": "store/proxmux_logo.png",

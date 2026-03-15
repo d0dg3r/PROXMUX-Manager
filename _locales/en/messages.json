@@ -283,5 +283,26 @@
     },
     "tabModeHelp": {
         "message": "Choose how browser tabs are managed when opening consoles."
+    },
+    "openFloatingWindow": {
+        "message": "Open Floating Window"
+    },
+    "extensionActionTitle": {
+        "message": "Extension Action"
+    },
+    "defaultActionClickMode": {
+        "message": "Toolbar click behavior"
+    },
+    "clickModeSidepanel": {
+        "message": "Open side panel"
+    },
+    "clickModeFloating": {
+        "message": "Open floating window"
+    },
+    "defaultActionClickModeHelp": {
+        "message": "Choose whether clicking the extension icon opens side panel or floating window."
+    },
+    "openFloatingWindowNow": {
+        "message": "Open Floating Window now"
     }
 }
