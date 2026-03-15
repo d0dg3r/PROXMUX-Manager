@@ -316,6 +316,25 @@ h1.branded-title .title-suffix {
     background-color: var(--tag-bg);
 }
 
+.reset-btn {
+    width: 100%;
+    background-color: hsla(0, 74%, 55%, 0.16);
+    color: var(--error);
+    border: 1px solid hsla(0, 70%, 55%, 0.5);
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    margin-top: 10px;
+}
+
+.reset-btn:hover {
+    border-color: hsla(0, 72%, 58%, 0.78);
+    background-color: hsla(0, 78%, 55%, 0.24);
+}
+
 .close-btn {
     width: auto;
     min-width: 108px;

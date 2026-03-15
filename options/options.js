@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const themeSelect = document.getElementById('theme-select');
     const saveBtn = document.getElementById('save-settings-btn');
     const testBtn = document.getElementById('test-connection-btn');
+    const resetBtn = document.getElementById('reset-settings-btn');
     const closeBtn = document.getElementById('close-settings-btn');
     const status = document.getElementById('status');
     const toggleSecretBtn = document.getElementById('toggle-secret');
@@ -16,6 +17,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const defaultScriptNodeInput = document.getElementById('default-script-node');
     const defaultActionClickModeSelect = document.getElementById('default-action-click-mode');
     const openFloatingWindowBtn = document.getElementById('open-floating-window-btn');
+    const RESET_STORAGE_KEYS = [
+        'proxmoxUrl',
+        'apiUser',
+        'apiTokenId',
+        'apiSecret',
+        'apiToken',
+        'failoverUrls',
+        'theme',
+        'consoleTabMode',
+        'displaySettings',
+        'communityScriptsCacheTtlHours',
+        'defaultScriptNode',
+        'defaultActionClickMode',
+        'scriptsPanelCollapsed',
+        'lastBrowserWindowId'
+    ];
+    const DEFAULT_SETTINGS = {
+        theme: 'auto',
+        consoleTabMode: 'duplicate',
+        communityScriptsCacheTtlHours: 12,
+        defaultScriptNode: '',
+        defaultActionClickMode: 'sidepanel'
+    };
+    // #region agent log
+    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H2',location:'options/options.js:44',message:'options DOM refs for reset button',data:{resetExists:Boolean(resetBtn),saveExists:Boolean(saveBtn),testExists:Boolean(testBtn),closeExists:Boolean(closeBtn)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // i18n Initialization
     function initI18n() {
@@ -121,6 +148,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             tab.classList.add('active');
             document.getElementById(target).classList.add('active');
+            const resetBtnStyle = resetBtn ? window.getComputedStyle(resetBtn) : null;
+            const resetRect = resetBtn ? resetBtn.getBoundingClientRect() : null;
+            // #region agent log
+            fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H5',location:'options/options.js:155',message:'options tab switch and reset visibility',data:{target,generalTabActive:document.getElementById('general')?.classList?.contains('active') ?? null,resetExists:Boolean(resetBtn),resetDisplay:resetBtnStyle?.display ?? null,resetVisibility:resetBtnStyle?.visibility ?? null,resetOpacity:resetBtnStyle?.opacity ?? null,resetWidth:resetRect ? Math.round(resetRect.width) : null,resetHeight:resetRect ? Math.round(resetRect.height) : null},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
         });
     });
 
@@ -178,6 +210,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const communityScriptsCacheTtlHours = Math.max(1, Math.min(168, Number(scriptsCacheTtlInput.value || 12)));
         const defaultScriptNode = defaultScriptNodeInput.value.trim();
         const defaultActionClickMode = defaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel';
+        // #region agent log
+        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H5',location:'options/options.js:185',message:'options save triggered',data:{normalizedOk:Boolean(normalized.ok),hasUser:Boolean(user),hasTokenId:Boolean(tokenId),hasSecret:Boolean(secret),nextUrl:normalized.ok?normalized.url:null,theme},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
 
         if (!normalized.ok || !user || !tokenId || !secret) {
             status.textContent = normalized.ok ? 'Please fill in all fields.' : normalized.error;
@@ -255,8 +290,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         await openOrFocusFloatingWindow();
     });
 
-    // Close settings page/tab
-    closeBtn.addEventListener('click', () => {
+    resetBtn.addEventListener('click', async () => {
+        const confirmText = chrome.i18n.getMessage('resetSettingsConfirm') || 'Reset all settings to defaults?';
+        if (!window.confirm(confirmText)) {
+            status.textContent = chrome.i18n.getMessage('resetSettingsCancelled') || 'Reset cancelled.';
+            status.style.color = 'var(--text-secondary)';
+            return;
+        }
+
+        await chrome.storage.local.remove(RESET_STORAGE_KEYS);
+        proxmoxUrlInput.value = '';
+        apiUserInput.value = '';
+        apiTokenIdInput.value = '';
+        apiSecretInput.value = '';
+        themeSelect.value = DEFAULT_SETTINGS.theme;
+        applyTheme(DEFAULT_SETTINGS.theme);
+        document.getElementById('tab-mode-select').value = DEFAULT_SETTINGS.consoleTabMode;
+        scriptsCacheTtlInput.value = DEFAULT_SETTINGS.communityScriptsCacheTtlHours;
+        defaultScriptNodeInput.value = DEFAULT_SETTINGS.defaultScriptNode;
+        defaultActionClickModeSelect.value = DEFAULT_SETTINGS.defaultActionClickMode;
+        status.textContent = chrome.i18n.getMessage('resetSettingsSuccess') || 'Settings reset to defaults.';
+        status.style.color = 'var(--success)';
+
+        closeSettingsPage();
+    });
+
+    function closeSettingsPage() {
         if (chrome?.tabs?.getCurrent && chrome?.tabs?.remove) {
             chrome.tabs.getCurrent((tab) => {
                 if (tab?.id) {
@@ -268,6 +327,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         window.close();
-    });
+    }
+
+    // Close settings page/tab
+    closeBtn.addEventListener('click', closeSettingsPage);
 });
 

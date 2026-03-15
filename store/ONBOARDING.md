@@ -110,7 +110,7 @@ Use English as the canonical release-source text, then keep the German section s
 - Interactive helper (run on Proxmox host shell):
 
 ```bash
-bash scripts/setup_proxmox_token.sh
+curl -fsSL 'https://raw.githubusercontent.com/d0dg3r/PROXMUX-Manager/refs/heads/main/scripts/setup_proxmox_token.sh' -o '/tmp/setup_proxmox_token.sh' && chmod 700 '/tmp/setup_proxmox_token.sh' && bash '/tmp/setup_proxmox_token.sh'
 ```
 
 - Recommended approach: dedicated API user + ACL role on `/`

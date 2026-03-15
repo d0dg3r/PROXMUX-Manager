@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const inlineEyeIcon = document.getElementById('inline-eye-icon');
     const inlineSaveSettingsBtn = document.getElementById('inline-save-settings-btn');
     const inlineTestConnectionBtn = document.getElementById('inline-test-connection-btn');
+    const inlineResetSettingsBtn = document.getElementById('inline-reset-settings-btn');
     const inlineSettingsStatus = document.getElementById('inline-settings-status');
     const template = document.getElementById('resource-item-template');
     const currentView = new URLSearchParams(window.location.search).get('view') || 'none';
@@ -68,6 +69,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     initI18n();
+    // #region agent log
+    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H4',location:'popup/popup.js:73',message:'i18n text resolution for inline reset button',data:{resetExists:Boolean(inlineResetSettingsBtn),resetTextLength:inlineResetSettingsBtn?.textContent?.trim()?.length ?? 0,resetTextSample:(inlineResetSettingsBtn?.textContent || '').trim().slice(0,24)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // Theme Management
     function applyTheme(theme) {
@@ -130,6 +134,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const scriptsGuideClose = document.getElementById('scripts-guide-close');
     const scriptsGuideOpenPage = document.getElementById('scripts-guide-open-page');
     const debugStatus = document.getElementById('debug-status');
+    const inlineSettingsActions = document.querySelector('.inline-settings-actions');
+
+    // #region agent log
+    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H2',location:'popup/popup.js:136',message:'popup DOM refs for reset button',data:{inlineResetExists:Boolean(inlineResetSettingsBtn),inlineActionsExists:Boolean(inlineSettingsActions),inlineViewHasHiddenClass:inlineSettingsView?.classList?.contains('hidden') ?? null,mainViewHasHiddenClass:mainViewContent?.classList?.contains('hidden') ?? null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     let displaySettings = {
         uptime: true,
@@ -137,6 +146,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         os: true,
         vmid: true,
         tags: true
+    };
+    const DEFAULT_DISPLAY_SETTINGS = {
+        uptime: true,
+        ip: true,
+        os: true,
+        vmid: true,
+        tags: true
+    };
+    const RESET_STORAGE_KEYS = [
+        'proxmoxUrl',
+        'apiUser',
+        'apiTokenId',
+        'apiSecret',
+        'apiToken',
+        'failoverUrls',
+        'theme',
+        'displaySettings',
+        'consoleTabMode',
+        'communityScriptsCacheTtlHours',
+        'defaultScriptNode',
+        'defaultActionClickMode',
+        'scriptsPanelCollapsed',
+        LAST_BROWSER_WINDOW_ID_KEY
+    ];
+    const DEFAULT_SETTINGS = {
+        theme: 'auto',
+        consoleTabMode: 'duplicate',
+        defaultActionClickMode: 'sidepanel'
     };
     
     let currentExpandedId = localStorage.getItem('lastActiveResource') || null;
@@ -169,6 +206,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const saveBtn = document.getElementById('inline-save-settings-btn');
         const scriptsPanelStyle = scriptsPanel ? window.getComputedStyle(scriptsPanel) : null;
         const saveBtnStyle = saveBtn ? window.getComputedStyle(saveBtn) : null;
+        const resetBtnStyle = inlineResetSettingsBtn ? window.getComputedStyle(inlineResetSettingsBtn) : null;
+        const resetRect = inlineResetSettingsBtn ? inlineResetSettingsBtn.getBoundingClientRect() : null;
+        const actionsStyle = inlineSettingsActions ? window.getComputedStyle(inlineSettingsActions) : null;
+        // #region agent log
+        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H3',location:'popup/popup.js:206',message:'inline settings view mode + reset button computed visibility',data:{isSettingsView,inlineViewHidden:inlineSettingsView.classList.contains('hidden'),bodySettingsClass:document.body.classList.contains('settings-view-active'),resetExists:Boolean(inlineResetSettingsBtn),resetDisplay:resetBtnStyle?.display ?? null,resetVisibility:resetBtnStyle?.visibility ?? null,resetOpacity:resetBtnStyle?.opacity ?? null,resetWidth:resetRect ? Math.round(resetRect.width) : null,resetHeight:resetRect ? Math.round(resetRect.height) : null,actionsDisplay:actionsStyle?.display ?? null,actionsGridTemplate:actionsStyle?.gridTemplateColumns ?? null,actionsOverflow:actionsStyle?.overflow ?? null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (!isSettingsView) {
             setInlineSettingsStatus('');
         }
@@ -408,6 +451,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     displaySettingsBtn.addEventListener('click', () => {
         const isSettingsViewOpen = !inlineSettingsView.classList.contains('hidden');
+        // #region agent log
+        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H1',location:'popup/popup.js:454',message:'gear click toggles settings view',data:{isSettingsViewOpenBeforeClick:isSettingsViewOpen,inlineViewHiddenBefore:inlineSettingsView.classList.contains('hidden')},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (isSettingsViewOpen) {
             closeInlineSettingsView();
             return;
@@ -440,6 +486,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const user = inlineApiUserInput.value.trim();
         const tokenId = inlineApiTokenIdInput.value.trim();
         const secret = inlineApiSecretInput.value.trim();
+        const previousUrl = settings?.proxmoxUrl || null;
+        const previousToken = settings?.apiToken || null;
 
         if (!normalized.ok || !user || !tokenId || !secret) {
             setInlineSettingsStatus(normalized.ok ? 'Please fill in all fields.' : normalized.error, 'error');
@@ -456,11 +504,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             consoleTabMode: inlineTabModeSelect.value,
             defaultActionClickMode: inlineDefaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel'
         };
+        // #region agent log
+        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H1',location:'popup/popup.js:505',message:'inline save about to persist payload',data:{previousUrl,nextUrl:payload.proxmoxUrl,urlChanged:previousUrl!==payload.proxmoxUrl,tokenChanged:previousToken!==payload.apiToken,themeChanged:(settings?.theme||'auto')!==payload.theme,consoleModeChanged:(settings?.consoleTabMode||'duplicate')!==payload.consoleTabMode},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
 
         await chrome.storage.local.set(payload);
         settings = { ...settings, ...payload };
         applyTheme(payload.theme);
         setInlineSettingsStatus('Settings saved successfully!', 'success');
+        // #region agent log
+        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H3',location:'popup/popup.js:513',message:'inline save completed, post-save runtime state',data:{settingsUrlAfterSave:settings?.proxmoxUrl ?? null,apiBaseUrlStill:api?.baseUrl ?? null,sameApiAndSettingsUrl:(api?.baseUrl ?? null)===(settings?.proxmoxUrl ?? null),allResourcesCount:Array.isArray(allResources)?allResources.length:null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         try {
             await ensureHostPermission(normalized.originPattern);
         } catch (_error) {
@@ -491,6 +545,56 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             setInlineSettingsStatus(`Connection failed: ${describeConnectionError(error)}`, 'error');
         }
+    });
+
+    inlineResetSettingsBtn.addEventListener('click', async () => {
+        const confirmText = chrome.i18n.getMessage('resetSettingsConfirm') || 'Reset all settings to defaults?';
+        if (!window.confirm(confirmText)) {
+            setInlineSettingsStatus(chrome.i18n.getMessage('resetSettingsCancelled') || 'Reset cancelled.', 'info');
+            return;
+        }
+
+        await chrome.storage.local.remove(RESET_STORAGE_KEYS);
+        localStorage.removeItem('lastSearchQuery');
+        localStorage.removeItem('lastFilters');
+        localStorage.removeItem('lastActiveResource');
+
+        settings = {};
+        displaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
+        activeFilters = { type: 'all', status: 'all', tag: null };
+        currentExpandedId = null;
+        allResources = [];
+
+        inlineProxmoxUrlInput.value = '';
+        inlineApiUserInput.value = '';
+        inlineApiTokenIdInput.value = '';
+        inlineApiSecretInput.value = '';
+        inlineThemeSelect.value = DEFAULT_SETTINGS.theme;
+        inlineTabModeSelect.value = DEFAULT_SETTINGS.consoleTabMode;
+        inlineDefaultActionClickModeSelect.value = DEFAULT_SETTINGS.defaultActionClickMode;
+        applyTheme(DEFAULT_SETTINGS.theme);
+
+        searchInput.value = '';
+        updateSearchClearState();
+        filterPills.forEach((pill) => {
+            const filterType = pill.getAttribute('data-filter-type');
+            const filterStatus = pill.getAttribute('data-filter-status');
+            if (!filterType && !filterStatus) return;
+            pill.classList.remove('active');
+            if (filterType === 'all') {
+                pill.classList.add('active');
+            }
+        });
+
+        syncDisplaySettingsCheckboxes();
+        applyDisplaySettings();
+        resourceList.innerHTML = '';
+        tagFiltersContainer?.classList.add('hidden');
+        tagFiltersSection?.classList.add('hidden');
+        noAuthOverlay.classList.remove('hidden');
+        loadingOverlay.classList.add('hidden');
+        setInlineSettingsStatus(chrome.i18n.getMessage('resetSettingsSuccess') || 'Settings reset to defaults.', 'success');
+        closeInlineSettingsView();
     });
 
     const DISPLAY_SETTING_KEYS = ['uptime', 'ip', 'os', 'vmid', 'tags'];
@@ -1048,6 +1152,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const fetchAndRender = async (showLoading = false) => {
         if (showLoading) loadingOverlay.classList.remove('hidden');
+        // #region agent log
+        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H2',location:'popup/popup.js:1147',message:'fetchAndRender start with current api/settings',data:{showLoading,apiBaseUrl:api?.baseUrl ?? null,apiCurrentUrl:api?.currentUrl ?? null,settingsProxmoxUrl:settings?.proxmoxUrl ?? null,sameApiAndSettingsUrl:(api?.baseUrl ?? null)===(settings?.proxmoxUrl ?? null),allResourcesCount:Array.isArray(allResources)?allResources.length:null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         try {
             const resources = await api.getResources();
             allResources = resources;
@@ -1129,6 +1236,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         searchInput.focus();
         updateFailoverNodes(allResources, settings.proxmoxUrl);
     });
+    // #region agent log
+    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H2',location:'popup/popup.js:1228',message:'api instance created on startup',data:{apiBaseUrl:api?.baseUrl ?? null,apiCurrentUrl:api?.currentUrl ?? null,settingsProxmoxUrl:settings?.proxmoxUrl ?? null,hasApiToken:Boolean(settings?.apiToken)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     async function renderResources(resources, api) {
         resourceList.innerHTML = '';

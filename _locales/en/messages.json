@@ -29,6 +29,18 @@
     "saveSettings": {
         "message": "Save Settings"
     },
+    "resetSettings": {
+        "message": "Reset Settings"
+    },
+    "resetSettingsConfirm": {
+        "message": "Reset all settings to defaults?"
+    },
+    "resetSettingsSuccess": {
+        "message": "Settings reset to defaults."
+    },
+    "resetSettingsCancelled": {
+        "message": "Reset cancelled."
+    },
     "proxmoxUrl": {
         "message": "Proxmox URL"
     },

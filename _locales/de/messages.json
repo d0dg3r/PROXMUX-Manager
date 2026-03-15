@@ -29,6 +29,18 @@
     "saveSettings": {
         "message": "Einstellungen speichern"
     },
+    "resetSettings": {
+        "message": "Einstellungen zurücksetzen"
+    },
+    "resetSettingsConfirm": {
+        "message": "Alle Einstellungen auf Standardwerte zurücksetzen?"
+    },
+    "resetSettingsSuccess": {
+        "message": "Einstellungen wurden auf Standardwerte zurückgesetzt."
+    },
+    "resetSettingsCancelled": {
+        "message": "Zurücksetzen abgebrochen."
+    },
     "proxmoxUrl": {
         "message": "Proxmox URL"
     },
