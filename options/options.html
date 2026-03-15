@@ -141,6 +141,9 @@
                 <div class="help-item">
                     <h4>Required Permissions</h4>
                     <p>Your API Token needs <code>VM.Console</code> and <code>Sys.Audit</code> permissions. For SPICE, <code>VM.Config.Options</code> or <code>PVEVMAdmin</code> is required to fetch the configuration.</p>
+                    <p>For a complete setup flow (best-practice dedicated API user, root fallback, and zsh-safe curl validation), see <code>docs/proxmox-token-setup.md</code>.</p>
+                    <p>On a Proxmox host you can use the interactive helper:</p>
+                    <p><code>bash scripts/setup_proxmox_token.sh</code></p>
                 </div>
 
                 <div class="help-item">
@@ -171,7 +174,7 @@
             <div class="card about-card">
                 <img src="../store/proxmux_logo.png" alt="Logo" class="about-logo">
                 <h2>PROXMUX Manager</h2>
-                <p class="version">Version 1.1.3</p>
+                <p class="version">Version 1.2.0</p>
                 <p>A premium extension for managing your Proxmox VE cluster with ease.</p>
                 <div class="about-footer">
                     <div class="about-links">

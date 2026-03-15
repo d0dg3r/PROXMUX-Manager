@@ -129,6 +129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const scriptsGuideBody = document.getElementById('scripts-guide-body');
     const scriptsGuideClose = document.getElementById('scripts-guide-close');
     const scriptsGuideOpenPage = document.getElementById('scripts-guide-open-page');
+    const debugStatus = document.getElementById('debug-status');
 
     let displaySettings = {
         uptime: true,
@@ -1460,8 +1461,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         sessionErrorOverlay.classList.add('hidden');
     });
 
-    const debugStatus = document.getElementById('debug-status');
-
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     async function focusTerminalInput(tabId) {
@@ -1854,7 +1853,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             return name.includes(query) || vmid.includes(query) || node.includes(query) || 
                    type.includes(query) || ip.includes(query) || tags.includes(query);
         });
-
         renderResources(filtered, api);
     }
 

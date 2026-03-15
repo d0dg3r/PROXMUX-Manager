@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/d0dg3r/PROXMUX-Manager/releases"><img src="https://img.shields.io/github/v/release/d0dg3r/PROXMUX-Manager?style=flat-square&logo=github" alt="Release"></a>
-  <a href="https://github.com/d0dg3r/PROXMUX-Manager/releases?q=pre"><img src="https://img.shields.io/github/v/release/d0dg3r/PROXMUX-Manager?include_prereleases&label=pre-release&logo=github&style=flat-square" alt="Pre-release"></a>
+  <a href="https://github.com/d0dg3r/PROXMUX-Manager/releases?q=beta"><img src="https://img.shields.io/github/v/release/d0dg3r/PROXMUX-Manager?include_prereleases&label=pre-release&logo=github&style=flat-square" alt="Pre-release"></a>
   <a href="https://chrome.google.com/webstore/detail/proxmux-manager"><img src="https://img.shields.io/badge/Chrome_Web_Store-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Chrome Web Store"></a>
   <a href="https://github.com/sponsors/d0dg3r"><img src="https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=ff69b4&style=flat-square" alt="Sponsor"></a>
 </p>
@@ -14,10 +14,11 @@ A dedicated Chrome Extension for Proxmox VE cluster management, providing instan
 - **Interactive Tags**: Discover and click cluster-wide tags in the search bar for instant categorical filtering.
 - **Uptime Monitoring**: Real-time, human-readable uptime (e.g., `2d 5h`) for all running resources.
 - **Enhanced Filters**: Quick-access pills to isolate Nodes, VMs, LXCs, and power status.
+- **Flexible Launch Modes**: Open PROXMUX in the Side Panel (default) or a persistent floating window.
 - **Improved Monitoring**: See VM/LXC status, OS types, and IP addresses at a glance.
 - **Intelligent Consoles**: Support for noVNC, SPICE (remote-viewer), and Node Shells.
 - **Community Scripts Assist**: Select scripts, copy install commands, and jump directly into host shell.
-- **Tabbed Settings UI**: Organized "General", "Help", and "About" sections for easier configuration.
+- **Inline Advanced Settings**: Open and edit settings directly inside the current extension view.
 - **Theme Selection**: Manually toggle between **Dark**, **Light**, or **System** themes.
 - **Stability and Performance**: Automated node discovery with seamless failover and expired session detection.
 - **Secure**: Uses Proxmox API Tokens for authentication; all credentials stay local.
@@ -46,7 +47,7 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
 ## Configuration
 
 1. Click the extension icon in the toolbar.
-2. Click the **Settings** (gear icon) in the top right to open the dedicated options page.
+2. Click the **Settings** (gear icon) in the top right to toggle inline advanced settings in the current view.
 3. Enter your **Proxmox Cluster Details**:
     - **Proxmox URL**: Your primary node URL (e.g., https://px01.example.com:8006).
     - **User & Realm**: e.g., root@pam.
@@ -54,6 +55,27 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
     - **API Secret**: the token secret value.
 4. Click **Save Settings** and grant host permissions.
 5. **High Availability**: Once configured, the extension will automatically discover other cluster nodes and store them for failover.
+
+## Proxmox API Token Setup
+
+- Default recommendation: create a dedicated API user and assign ACLs explicitly.
+- Root token setup is available as a fallback for lab/test environments.
+- Full guide: [docs/proxmox-token-setup.md](docs/proxmox-token-setup.md)
+- Interactive helper script (run on Proxmox host): `bash scripts/setup_proxmox_token.sh`
+- Or run a version-pinned script directly from GitHub (update `v1.1.4` to the latest release tag as needed):
+
+```bash
+curl -fsSL 'https://raw.githubusercontent.com/d0dg3r/PROXMUX-Manager/v1.1.4/scripts/setup_proxmox_token.sh' -o '/tmp/setup_proxmox_token.sh' && chmod 700 '/tmp/setup_proxmox_token.sh' && bash '/tmp/setup_proxmox_token.sh'
+```
+- The helper asks whether to store the token in a uniquely named local file with restrictive permissions (`600`), default `Yes`.
+- Import the token into your password manager immediately, then delete the local token file (`shred -u` preferred, otherwise `rm`).
+- zsh-safe curl sample (quotes are important):
+
+```bash
+curl -k -s -H 'Authorization: PVEAPIToken=USER_REALM!TOKEN_ID=TOKEN_SECRET' 'https://YOUR_HOST:8006/api2/json/cluster/resources?type=vm'
+```
+
+If PROXMUX only shows nodes but not VMs/LXCs, validate token rights first (`Sys.Audit` and VM/LXC audit scope) using the curl checks in the guide.
 
 ## Requirements
 
@@ -65,14 +87,21 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
 - Catalog source strategy: API/JSON first, website fallback.
 - Script descriptions are loaded from Community Scripts metadata/page content.
 - Install flow is safe assisted: copy command + open shell; no automatic remote execution.
-- Integration details: `docs/community-scripts-integration.md`.
+- Integration details: [docs/community-scripts-integration.md](docs/community-scripts-integration.md).
 
-## What's New in v1.1.4 🚀
+## Release Asset Process
 
-- **Node Management**: Nodes now display management IP addresses and offer direct SSH connectivity.
-- **Improved Terminal Experience**: Replaced noVNC with `xterm.js` for text-based shells (Node & LXC) for better scaling and clipboard support.
-- **Tab Behavior Settings**: Choose how console tabs are opened (New Tab, Reuse, or Focus Existing).
-- **Duplicate Prevention**: Intelligently focus existing console tabs for the same machine (Default).
+- Screenshot assets are maintained in the release branch/PR as part of release preparation.
+- Regenerate with `node store/generate_screenshots_ci.js` when UI changes.
+- Commit updated `store/screenshot_*.png` files in the same release branch.
+
+## What's New in v1.2.0-beta.2
+
+- **New Action Behavior**: Toolbar click behavior is now configurable (Side Panel or Floating Window).
+- **In-View Settings Workflow**: Advanced settings open inline inside side panel/floating view, with quick toggle and consistent styling.
+- **Display UX Refresh**: Display toggles are now compact chips directly below filters for better scanability.
+- **Visual Polish**: Better light-mode contrast and consistent console action coloring in both themes.
+- **Layout Improvements**: Filter/view chip sizing is unified; `Shell` now appears before `SSH`.
 
 ## Version 1.1.3 Release Notes
 - **Reliable Power State Sync**: Improved status refresh flow after start/stop/shutdown/reboot actions to avoid stale status rollbacks.

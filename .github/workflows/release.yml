@@ -21,10 +21,24 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           # Strip 'v' prefix
           VERSION=${TAG_NAME#v}
-          # Handle beta suffix for Chrome Manifest (e.g. 1.0.0-beta.1 -> 1.0.0.1)
-          # Chrome only allows dot-separated integers
-          CLEAN_VERSION=$(echo $VERSION | sed -E 's/-beta\.?([0-9]+)/.\1/')
-          CLEAN_VERSION=$(echo $CLEAN_VERSION | sed -E 's/-.*//') # Fallback to strip other suffixes
+          # Derive Chrome-compatible manifest version.
+          # Chrome only allows 1–4 dot-separated integers.
+          # For prerelease tags like 1.2.0-beta.2, map to 1.2.0.2 so versions stay monotonic.
+          BASE_VERSION=${VERSION%%-*}
+          PRERELEASE_PART=${VERSION#"$BASE_VERSION"}
+          if [[ "$PRERELEASE_PART" == -* ]]; then
+            # Drop leading '-' from prerelease part (e.g. "beta.2")
+            PRERELEASE_PART=${PRERELEASE_PART:1}
+            # Extract trailing numeric counter (e.g. 2 from "beta.2")
+            if [[ "$PRERELEASE_PART" =~ ([0-9]+)$ ]]; then
+              BETA_NUM="${BASH_REMATCH[1]}"
+            else
+              BETA_NUM=0
+            fi
+            CLEAN_VERSION="${BASE_VERSION}.${BETA_NUM}"
+          else
+            CLEAN_VERSION="$BASE_VERSION"
+          fi
           
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT

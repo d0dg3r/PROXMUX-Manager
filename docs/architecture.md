@@ -9,8 +9,12 @@ PROXMUX Manager is a Chrome Extension (Manifest V3) designed to manage Proxmox V
 
 ```mermaid
 graph TD
-    UI[Popup / Side Panel] --> API[ProxmoxAPI Library]
+    UI[Popup / Side Panel / Floating Window] --> API[ProxmoxAPI Library]
     UI --> CS[CommunityScripts Provider]
+    UI --> WL[WindowLauncher Utility]
+    BG[Background Service Worker] --> UI
+    BG --> SidePanel[chrome.sidePanel API]
+    BG --> WinAPI[chrome.windows API]
     API --> PVE[Proxmox VE API]
     UI --> Storage[chrome.storage.local]
     API --> Cookies[chrome.cookies API]
@@ -27,16 +31,20 @@ The heart of the extension. It encapsulates all communication with the Proxmox V
 - **Failover Logic**: Implements a retry mechanism that automatically switches to discovered cluster nodes if the primary node is unreachable.
 
 ### 3.2 UI Layer (`popup/`)
-The extension uses a shared UI for both the browser action popup and the Chrome Side Panel.
+The extension uses a shared UI for Side Panel and Floating Window contexts.
 - **`popup.html`**: Defines the searchable resource list and filter system.
-- **`popup.js`**: Handles state management, filtering, and event delegation. It interacts with `ProxmoxAPI` to fetch data and launch consoles.
+- **`popup.js`**: Handles state management, filtering, inline settings view toggling, and event delegation. It interacts with `ProxmoxAPI` to fetch data and launch consoles.
 - **i18n**: Fully localized using `chrome.i18n` for English and German.
 
-### 3.3 Data Storage
+### 3.3 Action Routing Layer (`background.js`, `lib/window-launcher.js`)
+- **`background.js`**: Handles toolbar click behavior and routes action open mode (Side Panel or Floating Window) based on saved settings.
+- **`lib/window-launcher.js`**: Encapsulates floating window lifecycle and extension URL launch helpers.
+
+### 3.4 Data Storage
 Uses `chrome.storage.local` to store:
 - API Credentials (URL, Token, Secret).
 - Failover Node URLs (discovered dynamically).
-- User preferences (theme, display settings).
+- User preferences (theme, display settings, toolbar click mode).
 - Community Scripts catalog/details cache and cache TTL settings.
 
 Uses `localStorage` for popup session UX state:
@@ -84,6 +92,19 @@ The popup top-bar search pipeline is designed for fast iterative filtering:
 3. Extension fetches detail data on demand (About text + install URL).
 4. Extension builds trusted install commands and copies them to clipboard.
 5. Extension opens target node shell tab; user pastes and executes manually.
+
+### 4.6 Toolbar Click and Window Mode Flow
+1. User clicks the browser action icon.
+2. `background.js` reads cached default click mode (`sidepanel` or `floating`).
+3. For `sidepanel`, the extension opens Side Panel on the last known browser window.
+4. For `floating`, `window-launcher` opens (or reuses) a dedicated floating extension window.
+5. In UI, users can switch context with header actions; opening one mode closes the other when needed.
+
+### 4.7 Inline Settings View Flow
+1. User clicks gear icon in header.
+2. Main resource view is replaced with inline advanced settings inside the same extension surface.
+3. Save/Test actions run in place and write to `chrome.storage.local`.
+4. Gear click or `Escape` toggles back to the main resource list while preserving header controls.
 
 ## 5. Security Model
 - **Token Security**: API Tokens are stored locally in the browser's profile and are never transmitted to any third-party.
