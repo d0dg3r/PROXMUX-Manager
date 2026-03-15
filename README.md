@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/d0dg3r/PROXMUX-Manager/releases"><img src="https://img.shields.io/github/v/release/d0dg3r/PROXMUX-Manager?style=flat-square&logo=github" alt="Release"></a>
-  <a href="https://github.com/d0dg3r/PROXMUX-Manager/releases?q=pre"><img src="https://img.shields.io/github/v/release/d0dg3r/PROXMUX-Manager?include_prereleases&label=pre-release&logo=github&style=flat-square" alt="Pre-release"></a>
+  <a href="https://github.com/d0dg3r/PROXMUX-Manager/releases?q=beta"><img src="https://img.shields.io/github/v/release/d0dg3r/PROXMUX-Manager?include_prereleases&label=pre-release&logo=github&style=flat-square" alt="Pre-release"></a>
   <a href="https://chrome.google.com/webstore/detail/proxmux-manager"><img src="https://img.shields.io/badge/Chrome_Web_Store-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Chrome Web Store"></a>
   <a href="https://github.com/sponsors/d0dg3r"><img src="https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=ff69b4&style=flat-square" alt="Sponsor"></a>
 </p>
