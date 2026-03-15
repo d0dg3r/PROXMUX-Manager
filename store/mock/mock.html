@@ -199,7 +199,7 @@
                     </label>
                 </div>
                 <div class="scripts-footer">
-                    <button id="scripts-install-btn" class="scripts-btn primary">Copy commands + open shell</button>
+                    <button id="scripts-install-btn" class="scripts-btn primary">Copy + auto-paste + open shell</button>
                     <div id="scripts-feedback" class="scripts-feedback"></div>
                 </div>
             </div>
@@ -663,7 +663,7 @@
 
         scriptsInstallBtn.addEventListener('click', () => {
             const selected = scriptCheckboxes.filter(cb => cb.checked).length;
-            scriptsFeedback.textContent = selected ? 'Commands copied. Opening shell...' : 'Please select at least one script.';
+            scriptsFeedback.textContent = selected ? 'Commands copied and auto-pasted into shell.' : 'Please select at least one script.';
         });
 
         const mockGuides = {

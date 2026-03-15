@@ -138,7 +138,7 @@
         "message": "Proxmox VE Scripts"
     },
     "scriptsHint": {
-        "message": "Waehle ein Skript aus, kopiere den Installationsbefehl und oeffne anschliessend die Node-Shell."
+        "message": "Waehle ein Skript aus, kopiere den Befehl, oeffne die Node-Shell und fuege automatisch ein."
     },
     "scriptsSearchPlaceholder": {
         "message": "Skripte suchen..."
@@ -153,7 +153,7 @@
         "message": "Einblenden"
     },
     "scriptsInstallAction": {
-        "message": "Befehle kopieren + Shell öffnen"
+        "message": "Kopieren + Auto-Einfuegen + Shell oeffnen"
     },
     "scriptsLoading": {
         "message": "Skriptkatalog wird geladen..."
@@ -193,6 +193,15 @@
     },
     "scriptsCopiedOpening": {
         "message": "Befehle kopiert. Shell wird geöffnet..."
+    },
+    "scriptsCopiedOpenFailed": {
+        "message": "Befehle kopiert. Shell-Tab konnte nicht erkannt werden. Bitte manuell einfuegen."
+    },
+    "scriptsCopiedAutoPasted": {
+        "message": "Befehle kopiert und automatisch in die Shell eingefuegt."
+    },
+    "scriptsCopiedPasteFallback": {
+        "message": "Befehle kopiert. Shell geoeffnet. Falls noetig bitte manuell einfuegen."
     },
     "scriptsActionFailed": {
         "message": "Skript-Aktion fehlgeschlagen."

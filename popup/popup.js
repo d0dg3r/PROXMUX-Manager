@@ -108,6 +108,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let scriptDetailsCache = new Map();
     let selectedScriptType = 'all';
     let currentGuidePageUrl = '';
+    const activePasteFlows = new Set();
+    const AUTO_PASTE_TIMEOUT_MS = 1500;
+    const NEW_TAB_READY_TIMEOUT_MS = 650;
+    const NEW_TAB_SETTLE_DELAY_MS = 250;
 
     // UI Event Listeners
     settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
@@ -734,7 +738,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             setScriptsFeedback(chrome.i18n.getMessage('scriptsCopiedOpening') || 'Commands copied. Opening shell...', 'success');
-            openConsole(targetNode, 'node', null, targetNode);
+            const consoleOpenResult = await openConsole(targetNode, 'node', null, targetNode);
+            if (!consoleOpenResult?.tabId) {
+                setScriptsFeedback(
+                    chrome.i18n.getMessage('scriptsCopiedOpenFailed') || 'Commands copied. Could not detect shell tab. Paste manually.',
+                    'info'
+                );
+                return;
+            }
+
+            const autoPasteResult = await tryAutoPasteIntoConsoleTab(consoleOpenResult.tabId, command, {
+                wasNewTab: Boolean(consoleOpenResult.wasNewTab)
+            });
+            if (autoPasteResult.ok) {
+                setScriptsFeedback(
+                    chrome.i18n.getMessage('scriptsCopiedAutoPasted') || 'Commands copied and auto-pasted into shell.',
+                    'success'
+                );
+            } else {
+                setScriptsFeedback(
+                    chrome.i18n.getMessage('scriptsCopiedPasteFallback') || 'Commands copied. Shell opened. Paste manually if needed.',
+                    'info'
+                );
+            }
         } catch (error) {
             console.error('Script install action failed:', error);
             setScriptsFeedback(error.message || (chrome.i18n.getMessage('scriptsActionFailed') || 'Script action failed.'), 'error');
@@ -1158,6 +1184,242 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const debugStatus = document.getElementById('debug-status');
 
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    async function focusTerminalInput(tabId) {
+        try {
+            await chrome.scripting.executeScript({
+                target: { tabId },
+                func: () => {
+                    const target = document.querySelector('textarea.xterm-helper-textarea') || document.querySelector('.xterm textarea');
+                    const viewport = document.querySelector('.xterm-viewport') || document.querySelector('.xterm-screen') || document.querySelector('.xterm');
+                    if (viewport && typeof viewport.click === 'function') viewport.click();
+                    if (target) target.focus();
+                    return Boolean(target);
+                }
+            });
+            return true;
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    async function readTerminalScreenText(tabId) {
+        try {
+            const result = await chrome.scripting.executeScript({
+                target: { tabId },
+                func: () => {
+                    const screenText = (document.querySelector('.xterm-rows')?.textContent ||
+                        document.querySelector('.xterm-screen')?.textContent ||
+                        '').trim();
+                    return screenText;
+                }
+            });
+            return result?.[0]?.result || '';
+        } catch (_error) {
+            return '';
+        }
+    }
+
+    async function waitForTerminalScreenChangeUntil(tabId, beforeText, deadlineMs, intervalMs = 90) {
+        while (Date.now() < deadlineMs) {
+            await sleep(intervalMs);
+            const now = await readTerminalScreenText(tabId);
+            if (now && now !== beforeText) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    async function waitForTabComplete(tabId, timeoutMs) {
+        if (timeoutMs <= 0) return false;
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            if (tab?.status === 'complete') return true;
+        } catch (_error) {
+            return false;
+        }
+        return await new Promise(resolve => {
+            let settled = false;
+            const done = (result) => {
+                if (settled) return;
+                settled = true;
+                chrome.tabs.onUpdated.removeListener(handleUpdate);
+                clearTimeout(timeoutId);
+                resolve(result);
+            };
+            const handleUpdate = (updatedTabId, changeInfo) => {
+                if (updatedTabId !== tabId) return;
+                if (changeInfo.status === 'complete') done(true);
+            };
+            const timeoutId = setTimeout(() => done(false), timeoutMs);
+            chrome.tabs.onUpdated.addListener(handleUpdate);
+        });
+    }
+
+    async function waitForTerminalReady(tabId, deadlineMs, options = {}) {
+        const wasNewTab = Boolean(options.wasNewTab);
+        let promptStabilityHits = 0;
+        const minPromptStability = wasNewTab ? 2 : 1;
+
+        while (Date.now() < deadlineMs) {
+            try {
+                const probe = await chrome.scripting.executeScript({
+                    target: { tabId },
+                    func: () => {
+                        const target = document.querySelector('textarea.xterm-helper-textarea') || document.querySelector('.xterm textarea');
+                        const shellVisible = Boolean(document.querySelector('.xterm .xterm-screen, .xterm-screen'));
+                        const screenText = (document.querySelector('.xterm-rows')?.textContent || document.querySelector('.xterm-screen')?.textContent || '').trim();
+                        if (!target) return { ready: false, reason: 'no_terminal_target', screenText };
+                        const rect = target.getBoundingClientRect();
+                        const visible = rect.width > 0 && rect.height > 0;
+                        return {
+                            ready: visible || shellVisible,
+                            reason: visible || shellVisible ? 'ready' : 'terminal_hidden',
+                            screenText
+                        };
+                    }
+                });
+                const payload = probe?.[0]?.result || { ready: false, reason: 'probe_no_result' };
+                const hasPromptLikeScreen = Boolean(payload.screenText && payload.screenText.length > 0);
+                if (hasPromptLikeScreen) {
+                    promptStabilityHits += 1;
+                } else {
+                    promptStabilityHits = 0;
+                }
+                if (payload.ready && promptStabilityHits >= minPromptStability) {
+                    return { ok: true, promptStable: true, screenText: payload.screenText || '' };
+                }
+            } catch (_error) {
+                return { ok: false, reason: 'timeout_or_no_effect' };
+            }
+            await sleep(wasNewTab ? 120 : 90);
+        }
+        return { ok: false, reason: 'timeout_or_no_effect' };
+    }
+
+    async function performBestEffortPaste(tabId, command, wasNewTab, deadlineMs) {
+        const focused = await focusTerminalInput(tabId);
+        if (!focused) {
+            return { ok: false, reason: 'timeout_or_no_effect' };
+        }
+
+        const beforeText = await readTerminalScreenText(tabId);
+        let injected;
+        try {
+            injected = await chrome.scripting.executeScript({
+                target: { tabId },
+                args: [command],
+                func: (pasteText) => {
+                    const target = document.querySelector('textarea.xterm-helper-textarea') || document.querySelector('.xterm textarea');
+                    const viewport = document.querySelector('.xterm-viewport') || document.querySelector('.xterm-screen') || document.querySelector('.xterm');
+                    if (!target) {
+                        return { hasTarget: false, wroteIntoInput: false };
+                    }
+
+                    if (viewport && typeof viewport.click === 'function') {
+                        viewport.click();
+                    }
+                    target.focus();
+
+                    let wroteIntoInput = false;
+                    try {
+                        if (typeof DataTransfer !== 'undefined') {
+                            const transfer = new DataTransfer();
+                            transfer.setData('text/plain', pasteText);
+                            const pasteEvent = new ClipboardEvent('paste', {
+                                bubbles: true,
+                                cancelable: true,
+                                clipboardData: transfer
+                            });
+                            target.dispatchEvent(pasteEvent);
+                        }
+                    } catch (_error) {
+                        // Best-effort only.
+                    }
+
+                    try {
+                        target.setRangeText(pasteText, target.selectionStart || 0, target.selectionEnd || 0, 'end');
+                        target.dispatchEvent(new InputEvent('beforeinput', {
+                            bubbles: true,
+                            cancelable: true,
+                            inputType: 'insertFromPaste',
+                            data: pasteText
+                        }));
+                        target.dispatchEvent(new InputEvent('input', {
+                            bubbles: true,
+                            inputType: 'insertFromPaste',
+                            data: pasteText
+                        }));
+                        wroteIntoInput = true;
+                    } catch (_error) {
+                        // Best-effort only.
+                    }
+
+                    return { hasTarget: true, wroteIntoInput };
+                }
+            });
+        } catch (_error) {
+            return { ok: false, reason: 'timeout_or_no_effect' };
+        }
+
+        const payload = injected?.[0]?.result || { hasTarget: false, wroteIntoInput: false };
+        if (!payload.hasTarget) {
+            return { ok: false, reason: 'timeout_or_no_effect' };
+        }
+        if (!wasNewTab && payload.wroteIntoInput) {
+            return { ok: true, method: 'best_effort_existing_tab_input_injected' };
+        }
+
+        const changed = await waitForTerminalScreenChangeUntil(tabId, beforeText, deadlineMs, 85);
+        if (changed) {
+            return { ok: true, method: 'best_effort_screen_change' };
+        }
+        if (wasNewTab && payload.wroteIntoInput) {
+            return { ok: true, method: 'best_effort_new_tab_plausible' };
+        }
+        return { ok: false, reason: 'timeout_or_no_effect' };
+    }
+
+    async function tryAutoPasteIntoConsoleTab(tabId, command, options = {}) {
+        const wasNewTab = Boolean(options.wasNewTab);
+        if (activePasteFlows.has(tabId)) {
+            return { ok: false, reason: 'timeout_or_no_effect' };
+        }
+        activePasteFlows.add(tabId);
+        try {
+            const startedAt = Date.now();
+            const deadlineMs = startedAt + AUTO_PASTE_TIMEOUT_MS;
+            if (wasNewTab) {
+                const tabReadyTimeout = Math.min(NEW_TAB_READY_TIMEOUT_MS, Math.max(0, deadlineMs - Date.now()));
+                const pageReady = await waitForTabComplete(tabId, tabReadyTimeout);
+                if (!pageReady || Date.now() >= deadlineMs) {
+                    return { ok: false, reason: 'timeout_or_no_effect' };
+                }
+                const terminalReadyDeadlineMs = Math.min(deadlineMs, Date.now() + 450);
+                const terminalReady = await waitForTerminalReady(tabId, terminalReadyDeadlineMs, { wasNewTab });
+                if (Date.now() >= deadlineMs) {
+                    return { ok: false, reason: 'timeout_or_no_effect' };
+                }
+            }
+
+            if (wasNewTab) {
+                const settleBudget = Math.min(NEW_TAB_SETTLE_DELAY_MS, Math.max(0, deadlineMs - Date.now()));
+                if (settleBudget > 0) {
+                    await sleep(settleBudget);
+                }
+            }
+            if (Date.now() >= deadlineMs) {
+                return { ok: false, reason: 'timeout_or_no_effect' };
+            }
+
+            return await performBestEffortPaste(tabId, command, wasNewTab, deadlineMs);
+        } finally {
+            activePasteFlows.delete(tabId);
+        }
+    }
+
     async function openConsole(node, type, vmid, name) {
         debugStatus.style.display = 'block';
         debugStatus.textContent = 'Checking session...';
@@ -1171,11 +1433,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.log('[Popup] Showing session error overlay');
                 debugStatus.textContent = 'Session invalid. Login required.';
                 sessionErrorOverlay.classList.remove('hidden');
-                return;
+                return null;
             }
             
             const url = api.getConsoleUrl(node, type, vmid, name);
-            if (!url) return;
+            if (!url) return null;
 
             const tabSettings = await chrome.storage.local.get(['consoleTabMode']);
             const mode = tabSettings.consoleTabMode || 'duplicate';
@@ -1197,10 +1459,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
                 if (consoleTab) {
-                    await chrome.tabs.update(consoleTab.id, { url, active: true });
+                    const updatedTab = await chrome.tabs.update(consoleTab.id, { url, active: true });
                     debugStatus.textContent = 'Updated existing console tab.';
                     setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
-                    return;
+                    return { tabId: updatedTab?.id || consoleTab.id || null, wasNewTab: false };
                 }
             } else if (mode === 'duplicate') {
                 // Focus existing tab for this specific resource
@@ -1230,22 +1492,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
                 if (existingTab) {
-                    await chrome.tabs.update(existingTab.id, { active: true });
+                    const updatedTab = await chrome.tabs.update(existingTab.id, { active: true });
                     debugStatus.textContent = 'Focusing existing tab.';
                     setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
-                    return;
+                    return { tabId: updatedTab?.id || existingTab.id || null, wasNewTab: false };
                 }
             }
 
             console.log(`[Popup] Opening console URL: ${url}`);
             debugStatus.textContent = 'Opening console...';
-            chrome.tabs.create({ url });
+            const createdTab = await chrome.tabs.create({ url });
             setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
+            return { tabId: createdTab?.id || null, wasNewTab: true };
         } catch (e) {
             console.error('[Popup] Failed to open console:', e);
             debugStatus.textContent = `Error: ${e.message}`;
             const url = api.getConsoleUrl(node, type, vmid, name);
-            if (url) chrome.tabs.create({ url });
+            if (url) {
+                const fallbackTab = await chrome.tabs.create({ url });
+                return { tabId: fallbackTab?.id || null, wasNewTab: true };
+            }
+            return null;
         }
     }
 

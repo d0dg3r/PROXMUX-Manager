@@ -1,11 +1,14 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
+const fs = require('fs');
 const { pathToFileURL } = require('url');
 
 test.describe('PROXMUX Popup (Mock Environment)', () => {
   const mockPath = pathToFileURL(
     path.resolve(__dirname, '../store/mock/mock.html')
   ).href;
+  const installCommandFilePath = path.resolve(__dirname, '../lib/install-command.js');
+  const manifestFilePath = path.resolve(__dirname, '../manifest.json');
 
   test.beforeEach(async ({ page }) => {
     await page.goto(mockPath);
@@ -16,6 +19,36 @@ test.describe('PROXMUX Popup (Mock Environment)', () => {
     await expect(title).toBeVisible();
     await expect(title.locator('.prox')).toHaveText('PROX');
     await expect(title.locator('.mux')).toHaveText('MUX');
+  });
+
+  test('buildInstallCommandForScripts should use no title header and double-quoted bash -c', async () => {
+    const installCommandSource = fs.readFileSync(installCommandFilePath, 'utf8');
+    expect(installCommandSource).not.toContain('`# ${title}\\n${buildInstallCommandForScript(script)}`');
+    expect(installCommandSource).not.toContain("bash -c '$(curl -fsSL");
+    expect(installCommandSource).toContain('bash -c "$(curl -fsSL');
+  });
+
+  test('auto paste logic should use fast best-effort flow and fallback', async () => {
+    const manifestSource = fs.readFileSync(manifestFilePath, 'utf8');
+    const popupSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.js'), 'utf8');
+    expect(manifestSource).not.toContain('"debugger"');
+    expect(popupSource).not.toContain('chrome.debugger.attach');
+    expect(popupSource).not.toContain('Input.dispatchKeyEvent');
+    expect(popupSource).not.toContain('Input.insertText');
+    expect(popupSource).toContain('activePasteFlows');
+    expect(popupSource).toContain('AUTO_PASTE_TIMEOUT_MS = 1500');
+    expect(popupSource).toContain('NEW_TAB_SETTLE_DELAY_MS = 250');
+    expect(popupSource).toContain('timeout_or_no_effect');
+    expect(popupSource).toContain('performBestEffortPaste');
+    expect(popupSource).toContain('scriptsCopiedPasteFallback');
+    expect(popupSource).toContain('waitForTerminalReady');
+    expect(popupSource).toContain('Date.now() < deadlineMs');
+    expect(popupSource).not.toContain('for (let attempt = 0; attempt < 8; attempt++)');
+    expect(popupSource).toContain('consoleOpenResult.wasNewTab');
+    expect(popupSource).toContain('if (!wasNewTab && payload.wroteIntoInput)');
+    expect(popupSource).toContain("method: 'best_effort_existing_tab_input_injected'");
+    expect(popupSource).toContain('if (wasNewTab) {');
+    expect(popupSource).toContain('waitForTabComplete(tabId, tabReadyTimeout)');
   });
 
   test('should show resource items from mock data', async ({ page }) => {
@@ -194,7 +227,7 @@ test.describe('PROXMUX Popup (Mock Environment)', () => {
     await expect(feedback).toHaveText('');
 
     await installBtn.click();
-    await expect(feedback).toContainText('Commands copied. Opening shell...');
+    await expect(feedback).toContainText('Commands copied and auto-pasted into shell.');
   });
 
   test('should clear scripts search with clear button', async ({ page }) => {

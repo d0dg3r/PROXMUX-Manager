@@ -54,12 +54,13 @@ bash -c '$(curl -fsSL https://raw.githubusercontent.com/community-scripts/Proxmo
 
 ## Safety Model
 
-Execution is intentionally assisted, not automatic:
+Execution is intentionally assisted, not fully automatic:
 
 1. User selects one or more scripts in popup.
 2. Extension builds and copies install commands to clipboard.
-3. Extension opens a Proxmox node shell tab.
-4. User pastes and executes manually.
+3. Extension opens or focuses a Proxmox node shell tab.
+4. Extension attempts to auto-paste the command into the shell input (without pressing Enter).
+5. User reviews and executes manually.
 
 No remote auto-execution is performed by default.
 

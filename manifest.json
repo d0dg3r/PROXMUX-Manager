@@ -8,6 +8,7 @@
   "permissions": [
     "storage",
     "tabs",
+    "scripting",
     "downloads",
     "downloads.open",
     "sidePanel",
