@@ -141,6 +141,9 @@
                 <div class="help-item">
                     <h4>Required Permissions</h4>
                     <p>Your API Token needs <code>VM.Console</code> and <code>Sys.Audit</code> permissions. For SPICE, <code>VM.Config.Options</code> or <code>PVEVMAdmin</code> is required to fetch the configuration.</p>
+                    <p>For a complete setup flow (best-practice dedicated API user, root fallback, and zsh-safe curl validation), see <code>docs/proxmox-token-setup.md</code>.</p>
+                    <p>On a Proxmox host you can use the interactive helper:</p>
+                    <p><code>bash scripts/setup_proxmox_token.sh</code></p>
                 </div>
 
                 <div class="help-item">

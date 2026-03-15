@@ -105,6 +105,12 @@ Use English as the canonical release-source text, then keep the German section s
 7. The extension will populate the resource list with nodes, VMs, and containers.
 8. Verify console buttons (noVNC, SPICE, Shell/SSH) appear based on resource configuration.
 
+### API token setup reference (for internal/reviewer prep)
+- Canonical guide: `docs/proxmox-token-setup.md`
+- Interactive helper (run on Proxmox host shell): `bash scripts/setup_proxmox_token.sh`
+- Recommended approach: dedicated API user + ACL role on `/`
+- Fallback approach: root token with `--privsep 0` (higher risk, use only when appropriate)
+
 ---
 
 ## 5. Visual Assets Checklist
