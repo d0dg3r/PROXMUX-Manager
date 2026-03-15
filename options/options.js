@@ -1,4 +1,5 @@
 import { ProxmoxAPI } from '../lib/proxmox-api.js';
+import { openOrFocusFloatingWindow } from '../lib/window-launcher.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const proxmoxUrlInput = document.getElementById('proxmox-url');
@@ -13,6 +14,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const toggleSecretBtn = document.getElementById('toggle-secret');
     const scriptsCacheTtlInput = document.getElementById('scripts-cache-ttl');
     const defaultScriptNodeInput = document.getElementById('default-script-node');
+    const defaultActionClickModeSelect = document.getElementById('default-action-click-mode');
+    const openFloatingWindowBtn = document.getElementById('open-floating-window-btn');
 
     // i18n Initialization
     function initI18n() {
@@ -133,13 +136,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Load saved settings
-    chrome.storage.local.get(['proxmoxUrl', 'apiUser', 'apiTokenId', 'apiSecret', 'theme', 'consoleTabMode', 'communityScriptsCacheTtlHours', 'defaultScriptNode'], (items) => {
+    chrome.storage.local.get(['proxmoxUrl', 'apiUser', 'apiTokenId', 'apiSecret', 'theme', 'consoleTabMode', 'communityScriptsCacheTtlHours', 'defaultScriptNode', 'defaultActionClickMode'], (items) => {
         if (items.proxmoxUrl) proxmoxUrlInput.value = items.proxmoxUrl;
         if (items.apiUser) apiUserInput.value = items.apiUser;
         if (items.apiTokenId) apiTokenIdInput.value = items.apiTokenId;
         if (items.apiSecret) apiSecretInput.value = items.apiSecret;
         scriptsCacheTtlInput.value = Number(items.communityScriptsCacheTtlHours || 12);
         defaultScriptNodeInput.value = items.defaultScriptNode || '';
+        defaultActionClickModeSelect.value = ['sidepanel', 'floating'].includes(items.defaultActionClickMode)
+            ? items.defaultActionClickMode
+            : 'sidepanel';
         if (items.theme) {
             themeSelect.value = items.theme;
             applyTheme(items.theme);
@@ -171,6 +177,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const theme = themeSelect.value;
         const communityScriptsCacheTtlHours = Math.max(1, Math.min(168, Number(scriptsCacheTtlInput.value || 12)));
         const defaultScriptNode = defaultScriptNodeInput.value.trim();
+        const defaultActionClickMode = defaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel';
 
         if (!normalized.ok || !user || !tokenId || !secret) {
             status.textContent = normalized.ok ? 'Please fill in all fields.' : normalized.error;
@@ -190,7 +197,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             theme: theme,
             consoleTabMode: document.getElementById('tab-mode-select').value,
             communityScriptsCacheTtlHours,
-            defaultScriptNode
+            defaultScriptNode,
+            defaultActionClickMode
         });
 
         status.textContent = 'Settings saved successfully!';
@@ -241,6 +249,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             status.textContent = `Connection failed: ${describeConnectionError(error)}`;
             status.style.color = 'var(--error)';
         }
+    });
+
+    openFloatingWindowBtn.addEventListener('click', async () => {
+        await openOrFocusFloatingWindow();
     });
 
     // Close settings page/tab

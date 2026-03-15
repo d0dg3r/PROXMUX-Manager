@@ -283,5 +283,26 @@
     },
     "tabModeHelp": {
         "message": "Wähle aus, wie Browser-Tabs für Konsolen verwaltet werden."
+    },
+    "openFloatingWindow": {
+        "message": "Floating-Fenster öffnen"
+    },
+    "extensionActionTitle": {
+        "message": "Extension-Aktion"
+    },
+    "defaultActionClickMode": {
+        "message": "Verhalten beim Toolbar-Klick"
+    },
+    "clickModeSidepanel": {
+        "message": "Sidepanel öffnen"
+    },
+    "clickModeFloating": {
+        "message": "Floating-Fenster öffnen"
+    },
+    "defaultActionClickModeHelp": {
+        "message": "Wähle, ob beim Klick auf das Extension-Icon Sidepanel oder Floating-Fenster geöffnet wird."
+    },
+    "openFloatingWindowNow": {
+        "message": "Floating-Fenster jetzt öffnen"
     }
 }

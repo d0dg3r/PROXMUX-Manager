@@ -27,8 +27,14 @@
                 <button id="display-settings-btn" data-i18n-title="displaySettings" title="Display Settings">
                     <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.97 21.68,8.76L19.68,5.29C19.58,5.08 19.33,4.97 19.11,5.05L16.62,6.05C16.1,5.65 15.55,5.32 14.95,5.07L14.59,2.42C14.53,2.18 14.33,2 14.07,2H10.07C9.83,2 9.63,2.18 9.59,2.42L9.23,5.07C8.63,5.32 8.08,5.65 7.56,6.05L5.07,5.05C4.85,4.97 4.6,5.08 4.5,5.29L2.5,8.76C2.38,8.97 2.44,9.22 2.63,9.37L4.74,11.03C4.7,11.34 4.68,11.67 4.68,12C4.68,12.33 4.7,12.65 4.74,12.97L2.63,14.63C2.44,14.78 2.38,15.03 2.5,15.24L4.5,18.71C4.6,18.92 4.85,19.03 5.07,18.95L7.56,17.95C8.08,18.35 8.63,18.68 9.23,18.93L9.59,21.58C9.63,21.82 9.83,22 10.07,22H14.07C14.33,22 14.53,21.82 14.59,21.58L14.95,18.93C15.55,18.68 16.1,18.35 16.62,17.95L19.11,18.95C19.33,19.03 19.58,18.92 19.68,18.71L21.68,15.24C21.78,15.03 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg>
                 </button>
+                <button id="floating-btn" data-i18n-title="openFloatingWindow" title="Open Floating Window">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7,3H21V17H19V5H7V3M3,7H17V21H3V7M5,9V19H15V9H5Z"/></svg>
+                </button>
                 <button id="sidepanel-btn" title="Open Side Panel">
                     <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,19H5V5H19V19M17,17H12V7H17V17Z"/></svg>
+                </button>
+                <button id="close-window-btn" class="hidden" data-i18n-title="close" title="Close Window">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M18.3,5.71L12,12L5.71,5.71L4.29,7.12L10.59,13.41L4.29,19.71L5.71,21.12L12,14.83L18.3,21.12L19.71,19.71L13.41,13.41L19.71,7.12L18.3,5.71Z"/></svg>
                 </button>
             </div>
         </header>
@@ -49,50 +55,54 @@
             
             <div id="collapsible-filters" class="collapsible-filters collapsed">
                 <div class="filters-inner">
-                    <div class="filter-bar">
-                        <button class="filter-pill active" data-i18n="filterAll" data-filter-type="all">All</button>
-                        <button class="filter-pill" data-i18n="filterNode" data-filter-type="node">Node</button>
-                        <button class="filter-pill" data-i18n="filterVM" data-filter-type="qemu">VM</button>
-                        <button class="filter-pill" data-i18n="filterLXC" data-filter-type="lxc">LXC</button>
-                        <div class="filter-divider"></div>
-                        <button class="filter-pill" data-i18n="filterRunning" data-filter-status="running">Online</button>
-                        <button class="filter-pill" data-i18n="filterStopped" data-filter-status="stopped">Offline</button>
+                    <div class="filter-section-row filter-section-main">
+                        <div class="filter-section-icon" aria-hidden="true" title="Filters">
+                            <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M3,5H21V7H3V5M7,11H17V13H7V11M10,17H14V19H10V17Z"/></svg>
+                        </div>
+                        <div class="filter-bar">
+                            <button class="filter-pill active" data-i18n="filterAll" data-filter-type="all">All</button>
+                            <button class="filter-pill" data-i18n="filterNode" data-filter-type="node">Node</button>
+                            <button class="filter-pill" data-i18n="filterVM" data-filter-type="qemu">VM</button>
+                            <button class="filter-pill" data-i18n="filterLXC" data-filter-type="lxc">LXC</button>
+                            <button class="filter-pill" data-i18n="filterRunning" data-filter-status="running">Online</button>
+                            <button class="filter-pill" data-i18n="filterStopped" data-filter-status="stopped">Offline</button>
+                        </div>
                     </div>
-                    <div id="tag-filters" class="tag-filters-container hidden"></div>
-                </div>
-            </div>
-
-            <div id="display-settings-menu" class="display-settings-menu hidden">
-                <div class="settings-header">
-                    <span data-i18n="displaySettings">Display Settings</span>
-                </div>
-                <div class="settings-grid">
-                    <label class="setting-item">
-                        <input type="checkbox" id="show-uptime" checked>
-                        <span data-i18n="showUptime">Uptime</span>
-                    </label>
-                    <label class="setting-item">
-                        <input type="checkbox" id="show-ip" checked>
-                        <span data-i18n="showIP">IP Address</span>
-                    </label>
-                    <label class="setting-item">
-                        <input type="checkbox" id="show-os" checked>
-                        <span data-i18n="showOS">OS Info</span>
-                    </label>
-                    <label class="setting-item">
-                        <input type="checkbox" id="show-vmid" checked>
-                        <span data-i18n="showID">IDs (VMID)</span>
-                    </label>
-                    <label class="setting-item">
-                        <input type="checkbox" id="show-tags" checked>
-                        <span data-i18n="showTags">Tags</span>
-                    </label>
-                </div>
-                <div class="settings-footer">
-                    <button id="settings-btn" class="text-btn">
-                        <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.97 21.68,8.76L19.68,5.29C19.58,5.08 19.33,4.97 19.11,5.05L16.62,6.05C16.1,5.65 15.55,5.32 14.95,5.07L14.59,2.42C14.53,2.18 14.33,2 14.07,2H10.07C9.83,2 9.63,2.18 9.59,2.42L9.23,5.07C8.63,5.32 8.08,5.65 7.56,6.05L5.07,5.05C4.85,4.97 4.6,5.08 4.5,5.29L2.5,8.76C2.38,8.97 2.44,9.22 2.63,9.37L4.74,11.03C4.7,11.34 4.68,11.67 4.68,12C4.68,12.33 4.7,12.65 4.74,12.97L2.63,14.63C2.44,14.78 2.38,15.03 2.5,15.24L4.5,18.71C4.6,18.92 4.85,19.03 5.07,18.95L7.56,17.95C8.08,18.35 8.63,18.68 9.23,18.93L9.59,21.58C9.63,21.82 9.83,22 10.07,22H14.07C14.33,22 14.53,21.82 14.59,21.58L14.95,18.93C15.55,18.68 16.1,18.35 16.62,17.95L19.11,18.95C19.33,19.03 19.58,18.92 19.68,18.71L21.68,15.24C21.78,15.03 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg>
-                        <span data-i18n="openFullSettings">Full Settings</span>
-                    </button>
+                    <hr class="filters-row-divider" aria-hidden="true">
+                    <div id="display-settings-menu" class="display-settings-menu filter-section-row filter-section-display">
+                        <div class="filter-section-icon" aria-hidden="true" title="Display Settings">
+                            <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/></svg>
+                        </div>
+                        <div class="settings-list compact-chips" role="group" aria-label="Display Settings">
+                                <label class="setting-chip" for="show-uptime">
+                                    <input type="checkbox" id="show-uptime" checked>
+                                    <span class="setting-chip-label filter-pill" data-i18n="showUptime">Uptime</span>
+                                </label>
+                                <label class="setting-chip" for="show-ip">
+                                    <input type="checkbox" id="show-ip" checked>
+                                    <span class="setting-chip-label filter-pill" data-i18n="showIP">IP Address</span>
+                                </label>
+                                <label class="setting-chip" for="show-os">
+                                    <input type="checkbox" id="show-os" checked>
+                                    <span class="setting-chip-label filter-pill" data-i18n="showOS">OS Info</span>
+                                </label>
+                                <label class="setting-chip" for="show-vmid">
+                                    <input type="checkbox" id="show-vmid" checked>
+                                    <span class="setting-chip-label filter-pill" data-i18n="showID">IDs (VMID)</span>
+                                </label>
+                                <label class="setting-chip" for="show-tags">
+                                    <input type="checkbox" id="show-tags" checked>
+                                    <span class="setting-chip-label filter-pill" data-i18n="showTags">Tags</span>
+                                </label>
+                        </div>
+                    </div>
+                    <hr class="filters-row-divider" aria-hidden="true">
+                    <div class="filter-section-row filter-section-tags hidden">
+                        <div class="filter-section-icon" aria-hidden="true" title="Tags">
+                            <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M20.59,13.41L11.58,22.41C11.21,22.78 10.7,23 10.17,23C9.64,23 9.14,22.79 8.76,22.41L1.59,15.24C1.21,14.86 1,14.36 1,13.83V4C1,2.9 1.9,2 3,2H12.83C13.36,2 13.86,2.21 14.24,2.59L21.41,9.76C22.2,10.55 22.2,11.82 21.41,12.59L20.59,13.41M7.5,8A1.5,1.5 0 0,0 6,9.5A1.5,1.5 0 0,0 7.5,11A1.5,1.5 0 0,0 9,9.5A1.5,1.5 0 0,0 7.5,8Z"/></svg>
+                        </div>
+                        <div id="tag-filters" class="tag-filters-container hidden"></div>
+                    </div>
                 </div>
             </div>
 
@@ -165,8 +175,74 @@
                 </div>
             </div>
         </div>
-    
-    <main>
+
+        <div id="inline-settings-view" class="inline-settings-view hidden">
+            <div class="inline-settings-card">
+                <div class="inline-settings-head">
+                    <h2 data-i18n="settings">Settings</h2>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label for="inline-proxmox-url" data-i18n="proxmoxUrl">Proxmox URL</label>
+                    <input type="text" id="inline-proxmox-url" placeholder="https://192.168.1.100:8006">
+                </div>
+
+                <div class="inline-settings-form-row">
+                    <div class="inline-settings-form-group">
+                        <label for="inline-api-user" data-i18n="apiUser">User & Realm</label>
+                        <input type="text" id="inline-api-user" placeholder="root@pam">
+                    </div>
+                    <div class="inline-settings-form-group">
+                        <label for="inline-api-tokenid" data-i18n="apiTokenId">Token ID</label>
+                        <input type="text" id="inline-api-tokenid" placeholder="automation">
+                    </div>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label for="inline-api-secret" data-i18n="apiSecret">API Secret</label>
+                    <div class="inline-input-with-icon">
+                        <input type="password" id="inline-api-secret" placeholder="Secret Value">
+                        <button id="inline-toggle-secret" class="icon-btn" title="Toggle secret visibility" aria-label="Toggle secret visibility">
+                            <svg id="inline-eye-icon" viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label for="inline-theme-select">Theme</label>
+                    <select id="inline-theme-select" class="inline-form-control">
+                        <option value="auto">Auto (System)</option>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                    </select>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label for="inline-tab-mode-select" data-i18n="consoleTabMode">Console Tab Behavior</label>
+                    <select id="inline-tab-mode-select" class="inline-form-control">
+                        <option value="multiple" data-i18n="tabMultiple">Open new tab every time</option>
+                        <option value="single" data-i18n="tabSingle">Reuse one single console tab</option>
+                        <option value="duplicate" data-i18n="tabDuplicate">Focus same machine if already open</option>
+                    </select>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label for="inline-default-action-click-mode" data-i18n="defaultActionClickMode">Toolbar click behavior</label>
+                    <select id="inline-default-action-click-mode" class="inline-form-control">
+                        <option value="sidepanel" data-i18n="clickModeSidepanel">Open side panel</option>
+                        <option value="floating" data-i18n="clickModeFloating">Open floating window</option>
+                    </select>
+                </div>
+
+                <div class="inline-settings-actions">
+                    <button id="inline-save-settings-btn" class="inline-action-btn primary" data-i18n="saveSettings">Save Settings</button>
+                    <button id="inline-test-connection-btn" class="inline-action-btn secondary">Test Connection</button>
+                </div>
+                <div id="inline-settings-status" class="inline-settings-status" aria-live="polite"></div>
+            </div>
+        </div>
+
+    <main id="main-view-content">
         <!-- Loading State -->
         <div id="loading" class="overlay">
             <div class="spinner"></div>
@@ -201,8 +277,8 @@
                 <div class="actions">
                     <button class="action-btn novnc" title="Open noVNC Console">noVNC</button>
                     <button class="action-btn spice hidden" title="Download SPICE .vv file">SPICE</button>
-                    <button class="action-btn ssh hidden" title="Connect via SSH">SSH</button>
                     <button class="action-btn shell hidden" title="Open Shell">Shell</button>
+                    <button class="action-btn ssh hidden" title="Connect via SSH">SSH</button>
                 </div>
             </div>
             <div class="details-drawer">

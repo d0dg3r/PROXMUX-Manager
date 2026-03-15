@@ -76,6 +76,23 @@
                 </div>
 
                 <div class="form-group separator">
+                    <h3 data-i18n="extensionActionTitle">Extension Action</h3>
+                </div>
+
+                <div class="form-group">
+                    <label for="default-action-click-mode" data-i18n="defaultActionClickMode">Toolbar click behavior</label>
+                    <select id="default-action-click-mode" class="form-control">
+                        <option value="sidepanel" data-i18n="clickModeSidepanel" selected>Open side panel</option>
+                        <option value="floating" data-i18n="clickModeFloating">Open floating window</option>
+                    </select>
+                    <small data-i18n="defaultActionClickModeHelp">Choose whether clicking the extension icon opens side panel or floating window.</small>
+                </div>
+
+                <div class="form-group">
+                    <button id="open-floating-window-btn" class="secondary-btn" data-i18n="openFloatingWindowNow">Open Floating Window now</button>
+                </div>
+
+                <div class="form-group separator">
                     <h3 data-i18n="communityScriptsTitle">Proxmox VE Scripts</h3>
                 </div>
 
