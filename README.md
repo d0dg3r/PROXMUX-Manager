@@ -14,10 +14,11 @@ A dedicated Chrome Extension for Proxmox VE cluster management, providing instan
 - **Interactive Tags**: Discover and click cluster-wide tags in the search bar for instant categorical filtering.
 - **Uptime Monitoring**: Real-time, human-readable uptime (e.g., `2d 5h`) for all running resources.
 - **Enhanced Filters**: Quick-access pills to isolate Nodes, VMs, LXCs, and power status.
+- **Flexible Launch Modes**: Open PROXMUX in the Side Panel (default) or a persistent floating window.
 - **Improved Monitoring**: See VM/LXC status, OS types, and IP addresses at a glance.
 - **Intelligent Consoles**: Support for noVNC, SPICE (remote-viewer), and Node Shells.
 - **Community Scripts Assist**: Select scripts, copy install commands, and jump directly into host shell.
-- **Tabbed Settings UI**: Organized "General", "Help", and "About" sections for easier configuration.
+- **Inline Advanced Settings**: Open and edit settings directly inside the current extension view.
 - **Theme Selection**: Manually toggle between **Dark**, **Light**, or **System** themes.
 - **Stability and Performance**: Automated node discovery with seamless failover and expired session detection.
 - **Secure**: Uses Proxmox API Tokens for authentication; all credentials stay local.
@@ -46,7 +47,7 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
 ## Configuration
 
 1. Click the extension icon in the toolbar.
-2. Click the **Settings** (gear icon) in the top right to open the dedicated options page.
+2. Click the **Settings** (gear icon) in the top right to toggle inline advanced settings in the current view.
 3. Enter your **Proxmox Cluster Details**:
     - **Proxmox URL**: Your primary node URL (e.g., https://px01.example.com:8006).
     - **User & Realm**: e.g., root@pam.
@@ -67,12 +68,13 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
 - Install flow is safe assisted: copy command + open shell; no automatic remote execution.
 - Integration details: `docs/community-scripts-integration.md`.
 
-## What's New in v1.1.4 🚀
+## What's New in v1.2.0-beta.1
 
-- **Node Management**: Nodes now display management IP addresses and offer direct SSH connectivity.
-- **Improved Terminal Experience**: Replaced noVNC with `xterm.js` for text-based shells (Node & LXC) for better scaling and clipboard support.
-- **Tab Behavior Settings**: Choose how console tabs are opened (New Tab, Reuse, or Focus Existing).
-- **Duplicate Prevention**: Intelligently focus existing console tabs for the same machine (Default).
+- **New Action Behavior**: Toolbar click behavior is now configurable (Side Panel or Floating Window).
+- **In-View Settings Workflow**: Advanced settings open inline inside side panel/floating view, with quick toggle and consistent styling.
+- **Display UX Refresh**: Display toggles are now compact chips directly below filters for better scanability.
+- **Visual Polish**: Better light-mode contrast and consistent console action coloring in both themes.
+- **Layout Improvements**: Filter/view chip sizing is unified; `Shell` now appears before `SSH`.
 
 ## Version 1.1.3 Release Notes
 - **Reliable Power State Sync**: Improved status refresh flow after start/stop/shutdown/reboot actions to avoid stale status rollbacks.

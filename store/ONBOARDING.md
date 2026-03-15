@@ -7,7 +7,7 @@ This document contains all the text, metadata, and justifications required to su
 - **Product Name**: PROXMUX Manager
 - **Short Name**: PROXMUX
 - **Detailed Description**: (See Section 2)
-- **Summary**: Manage your Proxmox VE cluster. Monitor resources, access consoles (noVNC, SPICE), and manage nodes with failover support.
+- **Summary**: Manage your Proxmox VE cluster from Side Panel or Floating Window. Monitor resources, access consoles, and manage nodes with failover support.
 - **Category**: Developer Tools
 - **Additional Category**: Productivity
 - **Verified Website**: (Your GitHub Repo URL) https://github.com/d0dg3r/PROXMUX-Manager
@@ -25,7 +25,8 @@ Key Features:
 - **Interactive Tags**: Discover and click cluster-wide tags for instant categorical filtering.
 - **Uptime Display**: Real-time, human-readable uptime (e.g., 2d 5h) for all running resources.
 - **Improved Monitoring**: See VM/LXC status, OS types, and IP addresses at a glance.
-- **Tabbed Settings UI**: Organized "General", "Help", and "About" sections for better configuration.
+- **Flexible Launch Modes**: Open the extension in the Chrome Side Panel (default) or a persistent floating window.
+- **Inline Advanced Settings**: Open and edit settings directly inside the active extension view.
 - **Intelligent Consoles**: Support for noVNC, SPICE (remote-viewer), and Node Shells.
 - **Modern Design**: Selection of Dark, Light, or Follow System themes.
 - **High Availability**: Automatic cluster node discovery and seamless failover support.
@@ -42,7 +43,8 @@ Hauptfunktionen:
 - **Interaktive Tags**: Entdecken und klicken Sie Cluster-weite Tags für eine sofortige kategorische Filterung.
 - **Uptime-Anzeige**: Echtzeit-Uptime in lesbarer Form (z. B. 2d 5h) für alle laufenden Ressourcen.
 - **Verbessertes Monitoring**: Sehen Sie VM/LXC-Status, OS-Typen und IP-Adressen auf einen Blick.
-- **Tabbed Settings UI**: Strukturierte Bereiche „General“, „Help“ und „About“ für bessere Konfiguration.
+- **Flexible Startmodi**: Öffnen Sie die Erweiterung im Side Panel (Standard) oder als dauerhaftes Floating Window.
+- **Inline-Advanced-Settings**: Einstellungen direkt in der aktiven Erweiterungsansicht öffnen und bearbeiten.
 - **Intelligente Konsolen**: Unterstützung für noVNC, SPICE (remote-viewer) und Node-Shells.
 - **Modernes Design**: Auswahl zwischen Dark, Light oder System-Theme.
 - **Hochverfügbarkeit**: Automatische Node-Erkennung im Cluster und nahtloses Failover.
@@ -95,11 +97,13 @@ Use English as the canonical release-source text, then keep the German section s
 
 ### How to test manually (if you have a test environment):
 1. Install the extension.
-2. Click the extension icon and then the 'Gear' icon to open Settings.
-3. Enter valid Proxmox VE API credentials (URL, User, Token ID, Secret).
-4. Save settings.
-5. The extension will populate the resource list with VMs and Containers.
-6. Verify console buttons (noVNC, SPICE) appear based on resource configuration.
+2. Click the extension icon; verify it opens in Side Panel by default.
+3. Click the floating-window control and verify a persistent floating manager window opens.
+4. In the extension header, click the gear icon and verify advanced settings open inline in the same view.
+5. Enter valid Proxmox VE API credentials (URL, User, Token ID, Secret).
+6. Save settings.
+7. The extension will populate the resource list with nodes, VMs, and containers.
+8. Verify console buttons (noVNC, SPICE, Shell/SSH) appear based on resource configuration.
 
 ---
 
