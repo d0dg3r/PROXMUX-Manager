@@ -89,6 +89,12 @@ If PROXMUX only shows nodes but not VMs/LXCs, validate token rights first (`Sys.
 - Install flow is safe assisted: copy command + open shell; no automatic remote execution.
 - Integration details: [docs/community-scripts-integration.md](docs/community-scripts-integration.md).
 
+## Release Asset Process
+
+- Screenshot assets are maintained in the release branch/PR as part of release preparation.
+- Regenerate with `node store/generate_screenshots_ci.js` when UI changes.
+- Commit updated `store/screenshot_*.png` files in the same release branch.
+
 ## What's New in v1.2.0-beta.1
 
 - **New Action Behavior**: Toolbar click behavior is now configurable (Side Panel or Floating Window).
