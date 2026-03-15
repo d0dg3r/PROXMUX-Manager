@@ -1,4 +1,6 @@
 import { ProxmoxAPI } from '../lib/proxmox-api.js';
+import { getCommunityScriptsCatalog, getCommunityScriptDetails, getCommunityScriptGuide } from '../lib/community-scripts.js';
+import { buildInstallCommandForScripts } from '../lib/install-command.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const resourceList = document.getElementById('resource-list');
@@ -76,6 +78,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const displaySettingsBtn = document.getElementById('display-settings-btn');
     const collapsibleFilters = document.getElementById('collapsible-filters');
     const displaySettingsMenu = document.getElementById('display-settings-menu');
+    const scriptsBody = document.getElementById('scripts-body');
+    const scriptsToggleBtn = document.getElementById('scripts-toggle-btn');
+    const scriptsRefreshBtn = document.getElementById('scripts-refresh-btn');
+    const scriptsSearchInput = document.getElementById('scripts-search-input');
+    const scriptsSearchClearBtn = document.getElementById('scripts-search-clear-btn');
+    const scriptsNodeSelect = document.getElementById('scripts-node-select');
+    const scriptsTypeFilters = document.getElementById('scripts-type-filters');
+    const scriptsList = document.getElementById('scripts-list');
+    const scriptsInstallBtn = document.getElementById('scripts-install-btn');
+    const scriptsFeedback = document.getElementById('scripts-feedback');
+    const scriptsGuideModal = document.getElementById('scripts-guide-modal');
+    const scriptsGuideTitle = document.getElementById('scripts-guide-title');
+    const scriptsGuideBody = document.getElementById('scripts-guide-body');
+    const scriptsGuideClose = document.getElementById('scripts-guide-close');
+    const scriptsGuideOpenPage = document.getElementById('scripts-guide-open-page');
 
     let displaySettings = {
         uptime: true,
@@ -86,6 +103,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     
     let currentExpandedId = localStorage.getItem('lastActiveResource') || null;
+    let scriptsCatalog = [];
+    let selectedScriptSlugs = new Set();
+    let scriptDetailsCache = new Map();
+    let selectedScriptType = 'all';
+    let currentGuidePageUrl = '';
+    const activePasteFlows = new Set();
+    const AUTO_PASTE_TIMEOUT_MS = 1500;
+    const NEW_TAB_READY_TIMEOUT_MS = 650;
+    const NEW_TAB_SETTLE_DELAY_MS = 250;
 
     // UI Event Listeners
     settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
@@ -224,8 +250,384 @@ document.addEventListener('DOMContentLoaded', async () => {
         resourceList.classList.toggle('hide-tags', !displaySettings.tags);
     }
 
+    function setScriptsFeedback(message, level = 'info') {
+        scriptsFeedback.textContent = message || '';
+        if (level === 'error') {
+            scriptsFeedback.style.color = 'var(--error)';
+        } else if (level === 'success') {
+            scriptsFeedback.style.color = 'var(--success)';
+        } else {
+            scriptsFeedback.style.color = 'var(--text-secondary)';
+        }
+    }
+
+    function renderScriptNodeOptions(resources) {
+        const nodes = resources
+            .filter(resource => resource.type === 'node')
+            .map(resource => resource.node)
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b));
+
+        scriptsNodeSelect.innerHTML = '';
+        const autoOption = document.createElement('option');
+        autoOption.value = '';
+        autoOption.textContent = chrome.i18n.getMessage('scriptsNodeAuto') || 'Auto node';
+        scriptsNodeSelect.appendChild(autoOption);
+
+        nodes.forEach(nodeName => {
+            const option = document.createElement('option');
+            option.value = nodeName;
+            option.textContent = nodeName;
+            scriptsNodeSelect.appendChild(option);
+        });
+
+        if (settings.defaultScriptNode && nodes.includes(settings.defaultScriptNode)) {
+            scriptsNodeSelect.value = settings.defaultScriptNode;
+        } else {
+            scriptsNodeSelect.value = '';
+        }
+    }
+
+    function getFilteredCatalog() {
+        const query = scriptsSearchInput.value.toLowerCase().trim();
+        return scriptsCatalog.filter(script => {
+            const typeMatch = selectedScriptType === 'all'
+                ? true
+                : selectedScriptType === 'alpine'
+                    ? script.uiGroup === 'lxc-alpine'
+                    : (script.uiType !== 'tools-group' && script.uiType === selectedScriptType);
+            if (!typeMatch) return false;
+            if (!query) return true;
+            return script.name.toLowerCase().includes(query) ||
+                script.slug.toLowerCase().includes(query) ||
+                (script.description || '').toLowerCase().includes(query);
+        });
+    }
+
+    function normalizeScriptTypeForUi(rawType, toolsGroup) {
+        if (toolsGroup) return 'tools-group';
+        const value = (rawType || '').toString().trim().toLowerCase();
+        if (value === 'ct' || value === 'lxc' || value === 'container') return 'ct';
+        if (value === 'vm' || value === 'qemu') return 'vm';
+        if (value === 'turnkey') return 'turnkey';
+        return 'ct';
+    }
+
+    function scriptTypeLabel(type) {
+        const keyByType = {
+            ct: 'scriptsTypeCt',
+            vm: 'scriptsTypeVm',
+            turnkey: 'scriptsTypeTurnkey'
+        };
+        const message = chrome.i18n.getMessage(keyByType[type] || 'scriptsTypeCt');
+        return message || (type || 'ct').toUpperCase();
+    }
+
+    function toolsGroupLabel(group) {
+        return `TOOLS / ${(group || 'misc').toUpperCase()}`;
+    }
+
+    function scriptsGroupLabel(groupKey) {
+        if (groupKey === 'lxc-alpine') return 'Alpine-LXC';
+        return toolsGroupLabel(groupKey);
+    }
+
+    function updateScriptsSearchClearState() {
+        if (!scriptsSearchClearBtn) return;
+        scriptsSearchClearBtn.classList.toggle('hidden', !scriptsSearchInput.value.trim());
+    }
+
+    function resetScriptsSearch() {
+        if (!scriptsSearchInput.value) return;
+        scriptsSearchInput.value = '';
+        updateScriptsSearchClearState();
+        renderScriptsList();
+        scriptsSearchInput.focus();
+    }
+
+    function updateScriptsTypeFilterButtons() {
+        if (!scriptsTypeFilters) return;
+        scriptsTypeFilters.querySelectorAll('.scripts-type-pill').forEach(button => {
+            button.classList.toggle('active', button.dataset.scriptType === selectedScriptType);
+        });
+    }
+
+    function escapeHtml(text) {
+        return (text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderGuideSection(title, content) {
+        if (!content) return '';
+        return `<section class="scripts-guide-section"><h4>${escapeHtml(title)}</h4><p>${escapeHtml(content)}</p></section>`;
+    }
+
+    function renderGuideDetailsSection(title, details) {
+        const labelByKey = {
+            version: 'Version',
+            category: 'Category',
+            website: 'Website',
+            docs: 'Docs',
+            config: 'Config',
+            port: 'Port',
+            runsIn: 'Runs in',
+            updated: 'Updated'
+        };
+        const entries = Object.entries(details || {}).filter(([, value]) => value);
+        if (!entries.length) return '';
+        const items = entries
+            .map(([key, value]) => {
+                const label = labelByKey[key] || key;
+                return `<li class="guide-details-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`;
+            })
+            .join('');
+        return `<section class="scripts-guide-section"><h4>${escapeHtml(title)}</h4><ul class="guide-details-list">${items}</ul></section>`;
+    }
+
+    function renderGuideInstallMethodsSection(title, methods) {
+        const rows = Array.isArray(methods) ? methods.filter(method => method && method.name) : [];
+        if (!rows.length) return '';
+        const cards = rows.map(method => {
+            const chips = [
+                method.os ? `<span>${escapeHtml(method.os)}</span>` : '',
+                method.cpu ? `<span>CPU ${escapeHtml(method.cpu)}</span>` : '',
+                method.ram ? `<span>RAM ${escapeHtml(method.ram)}</span>` : '',
+                method.hdd ? `<span>HDD ${escapeHtml(method.hdd)}</span>` : ''
+            ].filter(Boolean).join('');
+            return `<article class="guide-method-card"><h5>${escapeHtml(method.name)}</h5><div class="guide-method-meta">${chips}</div></article>`;
+        }).join('');
+        return `<section class="scripts-guide-section"><h4>${escapeHtml(title)}</h4><div class="guide-methods">${cards}</div></section>`;
+    }
+
+    function closeGuideModal() {
+        scriptsGuideModal.classList.add('hidden');
+    }
+
+    function openGuideModal() {
+        scriptsGuideModal.classList.remove('hidden');
+    }
+
+    async function showScriptGuide(script) {
+        if (!script) return;
+        openGuideModal();
+        const fallbackTitle = script.name || script.slug || (chrome.i18n.getMessage('scriptsGuideTitleFallback') || 'Script Guide');
+        scriptsGuideTitle.textContent = fallbackTitle;
+        scriptsGuideBody.innerHTML = `<p>${chrome.i18n.getMessage('scriptsGuideLoading') || 'Loading guide...'}</p>`;
+        currentGuidePageUrl = `https://community-scripts.org/scripts/${encodeURIComponent(script.slug)}`;
+        scriptsGuideOpenPage.disabled = false;
+
+        try {
+            const guide = await getCommunityScriptGuide(script.slug, { ttlHours: settings.communityScriptsCacheTtlHours || 12 });
+            scriptsGuideTitle.textContent = script.name || guide.slug || fallbackTitle;
+            currentGuidePageUrl = guide.pageUrl || currentGuidePageUrl;
+            const parts = [
+                renderGuideSection(chrome.i18n.getMessage('scriptsGuideAboutLabel') || 'About', guide.about),
+                renderGuideSection(chrome.i18n.getMessage('scriptsGuideNotesLabel') || 'Notes', guide.notes),
+                renderGuideSection(chrome.i18n.getMessage('scriptsGuideInstallLabel') || 'Install', guide.installCommand),
+                renderGuideDetailsSection(chrome.i18n.getMessage('scriptsGuideDetailsLabel') || 'Details', guide.details),
+                renderGuideInstallMethodsSection(chrome.i18n.getMessage('scriptsGuideInstallMethodsLabel') || 'Install Methods', guide.installMethods)
+            ].filter(Boolean);
+            if (!parts.length) {
+                scriptsGuideBody.innerHTML = `<p>${chrome.i18n.getMessage('scriptsGuideFailed') || 'Guide content is currently unavailable. You can open the full page.'}</p>`;
+            } else {
+                scriptsGuideBody.innerHTML = parts.join('');
+            }
+        } catch (_error) {
+            scriptsGuideBody.innerHTML = `<p>${chrome.i18n.getMessage('scriptsGuideFailed') || 'Guide content is currently unavailable. You can open the full page.'}</p>`;
+        }
+    }
+
+    function renderScriptsList() {
+        const filtered = getFilteredCatalog();
+        scriptsList.innerHTML = '';
+        if (!filtered.length) {
+            const empty = document.createElement('div');
+            empty.className = 'script-row';
+            empty.textContent = chrome.i18n.getMessage('scriptsNoResults') || 'No matching scripts.';
+            scriptsList.appendChild(empty);
+            return;
+        }
+
+        const limited = filtered.slice(0, 180);
+        const nonTools = limited.filter(script => script.uiType !== 'tools-group');
+        const tools = limited.filter(script => script.uiType === 'tools-group');
+        const alpine = nonTools.filter(script => script.uiGroup === 'lxc-alpine');
+        const regularNonTools = nonTools.filter(script => script.uiGroup !== 'lxc-alpine');
+        const toolsByGroup = new Map();
+        tools.forEach(script => {
+            const group = script.toolsGroup || 'misc';
+            if (!toolsByGroup.has(group)) toolsByGroup.set(group, []);
+            toolsByGroup.get(group).push(script);
+        });
+
+        const orderedGroups = ['addon', 'pve', 'copy-data'].filter(group => toolsByGroup.has(group));
+        const renderOrder = [
+            ...regularNonTools,
+            ...(alpine.length ? [{ __groupHeader: true, group: 'lxc-alpine' }] : []),
+            ...alpine,
+            ...orderedGroups.flatMap(group => {
+                const marker = { __groupHeader: true, group };
+                return [marker, ...(toolsByGroup.get(group) || [])];
+            })
+        ];
+
+        renderOrder.forEach(script => {
+            if (script.__groupHeader) {
+                const header = document.createElement('div');
+                header.className = 'scripts-group-header';
+                header.textContent = scriptsGroupLabel(script.group);
+                scriptsList.appendChild(header);
+                return;
+            }
+
+            const row = document.createElement('label');
+            row.className = 'script-row';
+            row.setAttribute('for', `script-${script.slug}`);
+
+            const rowMain = document.createElement('div');
+            rowMain.className = 'script-row-main';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `script-${script.slug}`;
+            checkbox.checked = selectedScriptSlugs.has(script.slug);
+            checkbox.addEventListener('change', async () => {
+                if (checkbox.checked) {
+                    selectedScriptSlugs = new Set([script.slug]);
+                    try {
+                        if (!scriptDetailsCache.has(script.slug)) {
+                            const details = await getCommunityScriptDetails(script.slug, { ttlHours: settings.communityScriptsCacheTtlHours || 12 });
+                            scriptDetailsCache.set(script.slug, { ...script, ...details });
+                        }
+                    } catch (_error) {
+                        // Keep base item in selection even if details fetch fails.
+                    }
+                } else {
+                    selectedScriptSlugs.delete(script.slug);
+                }
+                renderScriptsList();
+            });
+
+            const info = document.createElement('div');
+            info.className = 'script-info';
+
+            const titleRow = document.createElement('div');
+            titleRow.className = 'script-title-row';
+
+            const title = document.createElement('div');
+            title.className = 'script-title';
+            title.textContent = script.name;
+
+            titleRow.appendChild(title);
+            if (script.uiType !== 'tools-group') {
+                const badge = document.createElement('span');
+                badge.className = `script-type-badge type-${script.uiType}`;
+                badge.textContent = scriptTypeLabel(script.uiType);
+                titleRow.appendChild(badge);
+            }
+            info.appendChild(titleRow);
+
+            rowMain.appendChild(checkbox);
+            rowMain.appendChild(info);
+            row.appendChild(rowMain);
+
+            const guideButton = document.createElement('button');
+            guideButton.type = 'button';
+            guideButton.className = 'scripts-btn ghost script-guide-btn';
+            guideButton.textContent = chrome.i18n.getMessage('scriptsGuideOpen') || 'Guide';
+            guideButton.addEventListener('click', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                await showScriptGuide(script);
+            });
+            row.appendChild(guideButton);
+            scriptsList.appendChild(row);
+        });
+    }
+
+    async function loadScriptsCatalog(forceRefresh = false) {
+        setScriptsFeedback(chrome.i18n.getMessage('scriptsLoading') || 'Loading script catalog...');
+        try {
+            const ttlHours = Number(settings.communityScriptsCacheTtlHours || 12);
+            const result = await getCommunityScriptsCatalog({ forceRefresh, ttlHours });
+            scriptsCatalog = result.scripts
+                .map(script => ({
+                    ...script,
+                    description: (script.description || '').trim(),
+                    toolsGroup: (script.toolsGroup || '').toString().toLowerCase(),
+                    uiGroup: (script.uiGroup || '').toString().toLowerCase(),
+                    uiType: normalizeScriptTypeForUi(script.type, script.toolsGroup)
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            renderScriptsList();
+            if (result.source === 'github') {
+                const suffix = chrome.i18n.getMessage('scriptsLoadedGithubSuffix') || 'scripts loaded from GitHub';
+                setScriptsFeedback(`${scriptsCatalog.length} ${suffix}`, 'success');
+            } else if (result.source === 'cache-fallback') {
+                const suffix = chrome.i18n.getMessage('scriptsLoadedCacheFallbackSuffix') || 'scripts loaded from cache (GitHub currently unreachable)';
+                setScriptsFeedback(`${scriptsCatalog.length} ${suffix}`, 'info');
+            } else {
+                const suffix = chrome.i18n.getMessage('scriptsLoadedCacheSuffix') || 'scripts loaded from cache';
+                setScriptsFeedback(`${scriptsCatalog.length} ${suffix}`, 'success');
+            }
+        } catch (error) {
+            console.error('Community scripts catalog load failed:', error);
+            scriptsCatalog = [];
+            renderScriptsList();
+            const fallbackText = chrome.i18n.getMessage('scriptsLoadActionHint') ||
+                'Could not load scripts catalog. Check internet access to api.github.com/raw.githubusercontent.com and click Refresh.';
+            const detail = error?.message ? ` (${error.message})` : '';
+            setScriptsFeedback(`${fallbackText}${detail}`, 'error');
+        }
+    }
+
+    async function getSelectedScriptRecords() {
+        const selected = [];
+        for (const slug of selectedScriptSlugs) {
+            const fromCatalog = scriptsCatalog.find(script => script.slug === slug);
+            let details = scriptDetailsCache.get(slug);
+            if (!details) {
+                try {
+                    details = await getCommunityScriptDetails(slug, { ttlHours: settings.communityScriptsCacheTtlHours || 12 });
+                    scriptDetailsCache.set(slug, details);
+                } catch (error) {
+                    console.error(`Failed to load details for ${slug}:`, error);
+                }
+            }
+            selected.push({
+                ...fromCatalog,
+                ...details
+            });
+        }
+        return selected;
+    }
+
+    function getTargetNodeName() {
+        if (scriptsNodeSelect.value) return scriptsNodeSelect.value;
+        if (settings.defaultScriptNode) return settings.defaultScriptNode;
+        const firstNode = allResources.find(resource => resource.type === 'node');
+        return firstNode ? firstNode.node : '';
+    }
+
     // Load saved settings
-    const stored = await chrome.storage.local.get(['proxmoxUrl', 'apiUser', 'apiTokenId', 'apiSecret', 'apiToken', 'failoverUrls', 'theme', 'displaySettings']);
+    const stored = await chrome.storage.local.get([
+        'proxmoxUrl',
+        'apiUser',
+        'apiTokenId',
+        'apiSecret',
+        'apiToken',
+        'failoverUrls',
+        'theme',
+        'displaySettings',
+        'communityScriptsCacheTtlHours',
+        'defaultScriptNode',
+        'scriptsPanelCollapsed'
+    ]);
     const settings = stored;
     
     if (settings.displaySettings) {
@@ -241,6 +643,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (settings.theme) {
         applyTheme(settings.theme);
     }
+
+    if (settings.scriptsPanelCollapsed) {
+        scriptsBody.classList.add('hidden');
+        scriptsToggleBtn.textContent = chrome.i18n.getMessage('scriptsShow') || 'Show';
+    } else {
+        scriptsToggleBtn.textContent = chrome.i18n.getMessage('scriptsToggle') || 'Hide';
+    }
     
     if (!settings.proxmoxUrl || !settings.apiToken) {
         loadingOverlay.classList.add('hidden');
@@ -251,6 +660,112 @@ document.addEventListener('DOMContentLoaded', async () => {
     const api = new ProxmoxAPI(settings.proxmoxUrl, settings.apiToken, settings.failoverUrls || []);
 
     const getResourceKey = (res) => (res.vmid ? `${res.node}/${res.type}/${res.vmid}` : `node/${res.node}`);
+
+    scriptsSearchInput.addEventListener('input', () => {
+        updateScriptsSearchClearState();
+        renderScriptsList();
+    });
+
+    scriptsSearchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            resetScriptsSearch();
+        }
+    });
+
+    scriptsSearchClearBtn?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        resetScriptsSearch();
+    });
+
+    scriptsTypeFilters?.addEventListener('click', (event) => {
+        const button = event.target.closest('.scripts-type-pill');
+        if (!button) return;
+        selectedScriptType = button.dataset.scriptType || 'all';
+        updateScriptsTypeFilterButtons();
+        renderScriptsList();
+    });
+
+    scriptsGuideClose?.addEventListener('click', () => {
+        closeGuideModal();
+    });
+
+    scriptsGuideOpenPage?.addEventListener('click', () => {
+        if (!currentGuidePageUrl) return;
+        chrome.tabs.create({ url: currentGuidePageUrl });
+    });
+
+    scriptsGuideModal?.addEventListener('click', (event) => {
+        if (event.target === scriptsGuideModal) {
+            closeGuideModal();
+        }
+    });
+
+    scriptsRefreshBtn.addEventListener('click', () => {
+        loadScriptsCatalog(true);
+    });
+
+    scriptsToggleBtn.addEventListener('click', async () => {
+        const hidden = scriptsBody.classList.toggle('hidden');
+        scriptsToggleBtn.textContent = hidden
+            ? (chrome.i18n.getMessage('scriptsShow') || 'Show')
+            : (chrome.i18n.getMessage('scriptsToggle') || 'Hide');
+        await chrome.storage.local.set({ scriptsPanelCollapsed: hidden });
+    });
+
+    scriptsInstallBtn.addEventListener('click', async () => {
+        if (!selectedScriptSlugs.size) {
+            setScriptsFeedback(chrome.i18n.getMessage('scriptsSelectFirst') || 'Please select at least one script.', 'error');
+            return;
+        }
+
+        try {
+            const selectedScripts = await getSelectedScriptRecords();
+            const installable = selectedScripts.filter(script => script && script.installUrl);
+            if (!installable.length) {
+                setScriptsFeedback(chrome.i18n.getMessage('scriptsNoInstallUrl') || 'No install URLs found for selected scripts.', 'error');
+                return;
+            }
+
+            const command = buildInstallCommandForScripts(installable);
+            await navigator.clipboard.writeText(command);
+
+            const targetNode = getTargetNodeName();
+            if (!targetNode) {
+                setScriptsFeedback(chrome.i18n.getMessage('scriptsNoNode') || 'No node available for shell opening.', 'error');
+                return;
+            }
+
+            setScriptsFeedback(chrome.i18n.getMessage('scriptsCopiedOpening') || 'Commands copied. Opening shell...', 'success');
+            const consoleOpenResult = await openConsole(targetNode, 'node', null, targetNode);
+            if (!consoleOpenResult?.tabId) {
+                setScriptsFeedback(
+                    chrome.i18n.getMessage('scriptsCopiedOpenFailed') || 'Commands copied. Could not detect shell tab. Paste manually.',
+                    'info'
+                );
+                return;
+            }
+
+            const autoPasteResult = await tryAutoPasteIntoConsoleTab(consoleOpenResult.tabId, command, {
+                wasNewTab: Boolean(consoleOpenResult.wasNewTab)
+            });
+            if (autoPasteResult.ok) {
+                setScriptsFeedback(
+                    chrome.i18n.getMessage('scriptsCopiedAutoPasted') || 'Commands copied and auto-pasted into shell.',
+                    'success'
+                );
+            } else {
+                setScriptsFeedback(
+                    chrome.i18n.getMessage('scriptsCopiedPasteFallback') || 'Commands copied. Shell opened. Paste manually if needed.',
+                    'info'
+                );
+            }
+        } catch (error) {
+            console.error('Script install action failed:', error);
+            setScriptsFeedback(error.message || (chrome.i18n.getMessage('scriptsActionFailed') || 'Script action failed.'), 'error');
+        }
+    });
 
     const fetchAndRender = async (showLoading = false) => {
         if (showLoading) loadingOverlay.classList.remove('hidden');
@@ -272,6 +787,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             filterAndRender();
+            renderScriptNodeOptions(allResources);
         } catch (error) {
             console.error('Proxmox API Error:', error);
             if (showLoading) {
@@ -300,6 +816,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, delays[attempt]);
     };
+
+    loadScriptsCatalog(false);
+    updateScriptsSearchClearState();
+    updateScriptsTypeFilterButtons();
 
     // Initial load
     fetchAndRender(true).then(() => {
@@ -664,6 +1184,242 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const debugStatus = document.getElementById('debug-status');
 
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    async function focusTerminalInput(tabId) {
+        try {
+            await chrome.scripting.executeScript({
+                target: { tabId },
+                func: () => {
+                    const target = document.querySelector('textarea.xterm-helper-textarea') || document.querySelector('.xterm textarea');
+                    const viewport = document.querySelector('.xterm-viewport') || document.querySelector('.xterm-screen') || document.querySelector('.xterm');
+                    if (viewport && typeof viewport.click === 'function') viewport.click();
+                    if (target) target.focus();
+                    return Boolean(target);
+                }
+            });
+            return true;
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    async function readTerminalScreenText(tabId) {
+        try {
+            const result = await chrome.scripting.executeScript({
+                target: { tabId },
+                func: () => {
+                    const screenText = (document.querySelector('.xterm-rows')?.textContent ||
+                        document.querySelector('.xterm-screen')?.textContent ||
+                        '').trim();
+                    return screenText;
+                }
+            });
+            return result?.[0]?.result || '';
+        } catch (_error) {
+            return '';
+        }
+    }
+
+    async function waitForTerminalScreenChangeUntil(tabId, beforeText, deadlineMs, intervalMs = 90) {
+        while (Date.now() < deadlineMs) {
+            await sleep(intervalMs);
+            const now = await readTerminalScreenText(tabId);
+            if (now && now !== beforeText) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    async function waitForTabComplete(tabId, timeoutMs) {
+        if (timeoutMs <= 0) return false;
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            if (tab?.status === 'complete') return true;
+        } catch (_error) {
+            return false;
+        }
+        return await new Promise(resolve => {
+            let settled = false;
+            const done = (result) => {
+                if (settled) return;
+                settled = true;
+                chrome.tabs.onUpdated.removeListener(handleUpdate);
+                clearTimeout(timeoutId);
+                resolve(result);
+            };
+            const handleUpdate = (updatedTabId, changeInfo) => {
+                if (updatedTabId !== tabId) return;
+                if (changeInfo.status === 'complete') done(true);
+            };
+            const timeoutId = setTimeout(() => done(false), timeoutMs);
+            chrome.tabs.onUpdated.addListener(handleUpdate);
+        });
+    }
+
+    async function waitForTerminalReady(tabId, deadlineMs, options = {}) {
+        const wasNewTab = Boolean(options.wasNewTab);
+        let promptStabilityHits = 0;
+        const minPromptStability = wasNewTab ? 2 : 1;
+
+        while (Date.now() < deadlineMs) {
+            try {
+                const probe = await chrome.scripting.executeScript({
+                    target: { tabId },
+                    func: () => {
+                        const target = document.querySelector('textarea.xterm-helper-textarea') || document.querySelector('.xterm textarea');
+                        const shellVisible = Boolean(document.querySelector('.xterm .xterm-screen, .xterm-screen'));
+                        const screenText = (document.querySelector('.xterm-rows')?.textContent || document.querySelector('.xterm-screen')?.textContent || '').trim();
+                        if (!target) return { ready: false, reason: 'no_terminal_target', screenText };
+                        const rect = target.getBoundingClientRect();
+                        const visible = rect.width > 0 && rect.height > 0;
+                        return {
+                            ready: visible || shellVisible,
+                            reason: visible || shellVisible ? 'ready' : 'terminal_hidden',
+                            screenText
+                        };
+                    }
+                });
+                const payload = probe?.[0]?.result || { ready: false, reason: 'probe_no_result' };
+                const hasPromptLikeScreen = Boolean(payload.screenText && payload.screenText.length > 0);
+                if (hasPromptLikeScreen) {
+                    promptStabilityHits += 1;
+                } else {
+                    promptStabilityHits = 0;
+                }
+                if (payload.ready && promptStabilityHits >= minPromptStability) {
+                    return { ok: true, promptStable: true, screenText: payload.screenText || '' };
+                }
+            } catch (_error) {
+                return { ok: false, reason: 'timeout_or_no_effect' };
+            }
+            await sleep(wasNewTab ? 120 : 90);
+        }
+        return { ok: false, reason: 'timeout_or_no_effect' };
+    }
+
+    async function performBestEffortPaste(tabId, command, wasNewTab, deadlineMs) {
+        const focused = await focusTerminalInput(tabId);
+        if (!focused) {
+            return { ok: false, reason: 'timeout_or_no_effect' };
+        }
+
+        const beforeText = await readTerminalScreenText(tabId);
+        let injected;
+        try {
+            injected = await chrome.scripting.executeScript({
+                target: { tabId },
+                args: [command],
+                func: (pasteText) => {
+                    const target = document.querySelector('textarea.xterm-helper-textarea') || document.querySelector('.xterm textarea');
+                    const viewport = document.querySelector('.xterm-viewport') || document.querySelector('.xterm-screen') || document.querySelector('.xterm');
+                    if (!target) {
+                        return { hasTarget: false, wroteIntoInput: false };
+                    }
+
+                    if (viewport && typeof viewport.click === 'function') {
+                        viewport.click();
+                    }
+                    target.focus();
+
+                    let wroteIntoInput = false;
+                    try {
+                        if (typeof DataTransfer !== 'undefined') {
+                            const transfer = new DataTransfer();
+                            transfer.setData('text/plain', pasteText);
+                            const pasteEvent = new ClipboardEvent('paste', {
+                                bubbles: true,
+                                cancelable: true,
+                                clipboardData: transfer
+                            });
+                            target.dispatchEvent(pasteEvent);
+                        }
+                    } catch (_error) {
+                        // Best-effort only.
+                    }
+
+                    try {
+                        target.setRangeText(pasteText, target.selectionStart || 0, target.selectionEnd || 0, 'end');
+                        target.dispatchEvent(new InputEvent('beforeinput', {
+                            bubbles: true,
+                            cancelable: true,
+                            inputType: 'insertFromPaste',
+                            data: pasteText
+                        }));
+                        target.dispatchEvent(new InputEvent('input', {
+                            bubbles: true,
+                            inputType: 'insertFromPaste',
+                            data: pasteText
+                        }));
+                        wroteIntoInput = true;
+                    } catch (_error) {
+                        // Best-effort only.
+                    }
+
+                    return { hasTarget: true, wroteIntoInput };
+                }
+            });
+        } catch (_error) {
+            return { ok: false, reason: 'timeout_or_no_effect' };
+        }
+
+        const payload = injected?.[0]?.result || { hasTarget: false, wroteIntoInput: false };
+        if (!payload.hasTarget) {
+            return { ok: false, reason: 'timeout_or_no_effect' };
+        }
+        if (!wasNewTab && payload.wroteIntoInput) {
+            return { ok: true, method: 'best_effort_existing_tab_input_injected' };
+        }
+
+        const changed = await waitForTerminalScreenChangeUntil(tabId, beforeText, deadlineMs, 85);
+        if (changed) {
+            return { ok: true, method: 'best_effort_screen_change' };
+        }
+        if (wasNewTab && payload.wroteIntoInput) {
+            return { ok: true, method: 'best_effort_new_tab_plausible' };
+        }
+        return { ok: false, reason: 'timeout_or_no_effect' };
+    }
+
+    async function tryAutoPasteIntoConsoleTab(tabId, command, options = {}) {
+        const wasNewTab = Boolean(options.wasNewTab);
+        if (activePasteFlows.has(tabId)) {
+            return { ok: false, reason: 'timeout_or_no_effect' };
+        }
+        activePasteFlows.add(tabId);
+        try {
+            const startedAt = Date.now();
+            const deadlineMs = startedAt + AUTO_PASTE_TIMEOUT_MS;
+            if (wasNewTab) {
+                const tabReadyTimeout = Math.min(NEW_TAB_READY_TIMEOUT_MS, Math.max(0, deadlineMs - Date.now()));
+                const pageReady = await waitForTabComplete(tabId, tabReadyTimeout);
+                if (!pageReady || Date.now() >= deadlineMs) {
+                    return { ok: false, reason: 'timeout_or_no_effect' };
+                }
+                const terminalReadyDeadlineMs = Math.min(deadlineMs, Date.now() + 450);
+                const terminalReady = await waitForTerminalReady(tabId, terminalReadyDeadlineMs, { wasNewTab });
+                if (Date.now() >= deadlineMs) {
+                    return { ok: false, reason: 'timeout_or_no_effect' };
+                }
+            }
+
+            if (wasNewTab) {
+                const settleBudget = Math.min(NEW_TAB_SETTLE_DELAY_MS, Math.max(0, deadlineMs - Date.now()));
+                if (settleBudget > 0) {
+                    await sleep(settleBudget);
+                }
+            }
+            if (Date.now() >= deadlineMs) {
+                return { ok: false, reason: 'timeout_or_no_effect' };
+            }
+
+            return await performBestEffortPaste(tabId, command, wasNewTab, deadlineMs);
+        } finally {
+            activePasteFlows.delete(tabId);
+        }
+    }
+
     async function openConsole(node, type, vmid, name) {
         debugStatus.style.display = 'block';
         debugStatus.textContent = 'Checking session...';
@@ -677,11 +1433,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.log('[Popup] Showing session error overlay');
                 debugStatus.textContent = 'Session invalid. Login required.';
                 sessionErrorOverlay.classList.remove('hidden');
-                return;
+                return null;
             }
             
             const url = api.getConsoleUrl(node, type, vmid, name);
-            if (!url) return;
+            if (!url) return null;
 
             const tabSettings = await chrome.storage.local.get(['consoleTabMode']);
             const mode = tabSettings.consoleTabMode || 'duplicate';
@@ -703,10 +1459,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
                 if (consoleTab) {
-                    await chrome.tabs.update(consoleTab.id, { url, active: true });
+                    const updatedTab = await chrome.tabs.update(consoleTab.id, { url, active: true });
                     debugStatus.textContent = 'Updated existing console tab.';
                     setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
-                    return;
+                    return { tabId: updatedTab?.id || consoleTab.id || null, wasNewTab: false };
                 }
             } else if (mode === 'duplicate') {
                 // Focus existing tab for this specific resource
@@ -736,22 +1492,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
                 if (existingTab) {
-                    await chrome.tabs.update(existingTab.id, { active: true });
+                    const updatedTab = await chrome.tabs.update(existingTab.id, { active: true });
                     debugStatus.textContent = 'Focusing existing tab.';
                     setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
-                    return;
+                    return { tabId: updatedTab?.id || existingTab.id || null, wasNewTab: false };
                 }
             }
 
             console.log(`[Popup] Opening console URL: ${url}`);
             debugStatus.textContent = 'Opening console...';
-            chrome.tabs.create({ url });
+            const createdTab = await chrome.tabs.create({ url });
             setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
+            return { tabId: createdTab?.id || null, wasNewTab: true };
         } catch (e) {
             console.error('[Popup] Failed to open console:', e);
             debugStatus.textContent = `Error: ${e.message}`;
             const url = api.getConsoleUrl(node, type, vmid, name);
-            if (url) chrome.tabs.create({ url });
+            if (url) {
+                const fallbackTab = await chrome.tabs.create({ url });
+                return { tabId: fallbackTab?.id || null, wasNewTab: true };
+            }
+            return null;
         }
     }
 
