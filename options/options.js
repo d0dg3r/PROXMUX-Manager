@@ -34,15 +34,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         'lastBrowserWindowId'
     ];
     const DEFAULT_SETTINGS = {
+        apiUser: 'api-admin@pve',
+        apiTokenId: 'full-access',
         theme: 'auto',
         consoleTabMode: 'duplicate',
         communityScriptsCacheTtlHours: 12,
         defaultScriptNode: '',
         defaultActionClickMode: 'sidepanel'
     };
-    // #region agent log
-    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H2',location:'options/options.js:44',message:'options DOM refs for reset button',data:{resetExists:Boolean(resetBtn),saveExists:Boolean(saveBtn),testExists:Boolean(testBtn),closeExists:Boolean(closeBtn)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // i18n Initialization
     function initI18n() {
@@ -54,6 +53,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     initI18n();
+
+    function attachClearButtonsToInputs(inputIds) {
+        const updateCallbacks = [];
+        inputIds.forEach((id) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'input-with-clear';
+            input.parentNode.insertBefore(wrapper, input);
+            wrapper.appendChild(input);
+
+            const clearBtn = document.createElement('button');
+            clearBtn.type = 'button';
+            clearBtn.className = 'input-clear-btn hidden';
+            clearBtn.title = 'Clear field';
+            clearBtn.setAttribute('aria-label', 'Clear field');
+            clearBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M18.3,5.71L12,12L5.71,5.71L4.29,7.12L10.59,13.41L4.29,19.71L5.71,21.12L12,14.83L18.3,21.12L19.71,19.71L13.41,13.41L19.71,7.12L18.3,5.71Z"/></svg>';
+            wrapper.appendChild(clearBtn);
+            input.classList.add('has-clear-control');
+
+            const updateClearState = () => {
+                clearBtn.classList.toggle('hidden', !input.value);
+            };
+            updateClearState();
+            input.addEventListener('input', updateClearState);
+            clearBtn.addEventListener('click', () => {
+                input.value = '';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.focus();
+            });
+            updateCallbacks.push(updateClearState);
+        });
+        return () => updateCallbacks.forEach((fn) => fn());
+    }
+    const updateOptionsInputClearButtons = attachClearButtonsToInputs([
+        'proxmox-url',
+        'api-user',
+        'api-tokenid',
+        'default-script-node'
+    ]);
 
     function normalizeAndValidateHttpsUrl(input) {
         const raw = (input || '').trim();
@@ -148,11 +188,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             tab.classList.add('active');
             document.getElementById(target).classList.add('active');
-            const resetBtnStyle = resetBtn ? window.getComputedStyle(resetBtn) : null;
-            const resetRect = resetBtn ? resetBtn.getBoundingClientRect() : null;
-            // #region agent log
-            fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H5',location:'options/options.js:155',message:'options tab switch and reset visibility',data:{target,generalTabActive:document.getElementById('general')?.classList?.contains('active') ?? null,resetExists:Boolean(resetBtn),resetDisplay:resetBtnStyle?.display ?? null,resetVisibility:resetBtnStyle?.visibility ?? null,resetOpacity:resetBtnStyle?.opacity ?? null,resetWidth:resetRect ? Math.round(resetRect.width) : null,resetHeight:resetRect ? Math.round(resetRect.height) : null},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
         });
     });
 
@@ -170,8 +205,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load saved settings
     chrome.storage.local.get(['proxmoxUrl', 'apiUser', 'apiTokenId', 'apiSecret', 'theme', 'consoleTabMode', 'communityScriptsCacheTtlHours', 'defaultScriptNode', 'defaultActionClickMode'], (items) => {
         if (items.proxmoxUrl) proxmoxUrlInput.value = items.proxmoxUrl;
-        if (items.apiUser) apiUserInput.value = items.apiUser;
-        if (items.apiTokenId) apiTokenIdInput.value = items.apiTokenId;
+        apiUserInput.value = items.apiUser || DEFAULT_SETTINGS.apiUser;
+        apiTokenIdInput.value = items.apiTokenId || DEFAULT_SETTINGS.apiTokenId;
         if (items.apiSecret) apiSecretInput.value = items.apiSecret;
         scriptsCacheTtlInput.value = Number(items.communityScriptsCacheTtlHours || 12);
         defaultScriptNodeInput.value = items.defaultScriptNode || '';
@@ -185,6 +220,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (items.consoleTabMode) {
             document.getElementById('tab-mode-select').value = items.consoleTabMode;
         }
+        updateOptionsInputClearButtons();
     });
 
     themeSelect.addEventListener('change', () => {
@@ -210,9 +246,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const communityScriptsCacheTtlHours = Math.max(1, Math.min(168, Number(scriptsCacheTtlInput.value || 12)));
         const defaultScriptNode = defaultScriptNodeInput.value.trim();
         const defaultActionClickMode = defaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel';
-        // #region agent log
-        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H5',location:'options/options.js:185',message:'options save triggered',data:{normalizedOk:Boolean(normalized.ok),hasUser:Boolean(user),hasTokenId:Boolean(tokenId),hasSecret:Boolean(secret),nextUrl:normalized.ok?normalized.url:null,theme},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
 
         if (!normalized.ok || !user || !tokenId || !secret) {
             status.textContent = normalized.ok ? 'Please fill in all fields.' : normalized.error;
@@ -300,8 +333,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         await chrome.storage.local.remove(RESET_STORAGE_KEYS);
         proxmoxUrlInput.value = '';
-        apiUserInput.value = '';
-        apiTokenIdInput.value = '';
+        apiUserInput.value = DEFAULT_SETTINGS.apiUser;
+        apiTokenIdInput.value = DEFAULT_SETTINGS.apiTokenId;
         apiSecretInput.value = '';
         themeSelect.value = DEFAULT_SETTINGS.theme;
         applyTheme(DEFAULT_SETTINGS.theme);
@@ -309,6 +342,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         scriptsCacheTtlInput.value = DEFAULT_SETTINGS.communityScriptsCacheTtlHours;
         defaultScriptNodeInput.value = DEFAULT_SETTINGS.defaultScriptNode;
         defaultActionClickModeSelect.value = DEFAULT_SETTINGS.defaultActionClickMode;
+        updateOptionsInputClearButtons();
         status.textContent = chrome.i18n.getMessage('resetSettingsSuccess') || 'Settings reset to defaults.';
         status.style.color = 'var(--success)';
 

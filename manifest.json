@@ -15,8 +15,7 @@
     "cookies"
   ],
   "host_permissions": [
-    "https://*/*",
-    "http://127.0.0.1/*"
+    "https://*/*"
   ],
   "side_panel": {
     "default_path": "popup/popup.html"

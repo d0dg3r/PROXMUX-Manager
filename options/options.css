@@ -217,6 +217,38 @@ h1.branded-title .title-suffix {
     background-color: var(--hover-bg);
 }
 
+.input-with-clear {
+    position: relative;
+}
+
+.input-clear-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--hover-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.2s ease;
+}
+
+.input-clear-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+input.has-clear-control {
+    padding-right: 34px;
+}
+
 .primary-btn {
     width: 100%;
     background-image: var(--brand-mux-gradient);

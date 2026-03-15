@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const openSettingsOverlayBtn = document.getElementById('open-settings-overlay');
     const mainViewContent = document.getElementById('main-view-content');
     const inlineSettingsView = document.getElementById('inline-settings-view');
+    const searchContainer = document.querySelector('.search-container');
     const inlineProxmoxUrlInput = document.getElementById('inline-proxmox-url');
     const inlineApiUserInput = document.getElementById('inline-api-user');
     const inlineApiTokenIdInput = document.getElementById('inline-api-tokenid');
@@ -69,9 +70,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     initI18n();
-    // #region agent log
-    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H4',location:'popup/popup.js:73',message:'i18n text resolution for inline reset button',data:{resetExists:Boolean(inlineResetSettingsBtn),resetTextLength:inlineResetSettingsBtn?.textContent?.trim()?.length ?? 0,resetTextSample:(inlineResetSettingsBtn?.textContent || '').trim().slice(0,24)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // Theme Management
     function applyTheme(theme) {
@@ -103,6 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let allResources = [];
     let settings = {};
+    let api = null;
     const pendingStatusOverrides = new Map();
     const tagFiltersContainer = document.getElementById('tag-filters');
     const tagFiltersSection = tagFiltersContainer?.closest('.filter-section-tags');
@@ -118,6 +117,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const displaySettingsBtn = document.getElementById('display-settings-btn');
     const collapsibleFilters = document.getElementById('collapsible-filters');
     const displaySettingsMenu = document.getElementById('display-settings-menu');
+    const scriptsPanel = document.querySelector('.scripts-panel');
     const scriptsBody = document.getElementById('scripts-body');
     const scriptsToggleBtn = document.getElementById('scripts-toggle-btn');
     const scriptsRefreshBtn = document.getElementById('scripts-refresh-btn');
@@ -134,11 +134,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const scriptsGuideClose = document.getElementById('scripts-guide-close');
     const scriptsGuideOpenPage = document.getElementById('scripts-guide-open-page');
     const debugStatus = document.getElementById('debug-status');
-    const inlineSettingsActions = document.querySelector('.inline-settings-actions');
-
-    // #region agent log
-    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H2',location:'popup/popup.js:136',message:'popup DOM refs for reset button',data:{inlineResetExists:Boolean(inlineResetSettingsBtn),inlineActionsExists:Boolean(inlineSettingsActions),inlineViewHasHiddenClass:inlineSettingsView?.classList?.contains('hidden') ?? null,mainViewHasHiddenClass:mainViewContent?.classList?.contains('hidden') ?? null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     let displaySettings = {
         uptime: true,
@@ -171,6 +166,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         LAST_BROWSER_WINDOW_ID_KEY
     ];
     const DEFAULT_SETTINGS = {
+        apiUser: 'api-admin@pve',
+        apiTokenId: 'full-access',
         theme: 'auto',
         consoleTabMode: 'duplicate',
         defaultActionClickMode: 'sidepanel'
@@ -198,20 +195,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function attachClearButtonsToInputs(inputIds) {
+        const updateCallbacks = [];
+        inputIds.forEach((id) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'input-with-clear';
+            input.parentNode.insertBefore(wrapper, input);
+            wrapper.appendChild(input);
+
+            const clearBtn = document.createElement('button');
+            clearBtn.type = 'button';
+            clearBtn.className = 'input-clear-btn hidden';
+            clearBtn.title = 'Clear field';
+            clearBtn.setAttribute('aria-label', 'Clear field');
+            clearBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M18.3,5.71L12,12L5.71,5.71L4.29,7.12L10.59,13.41L4.29,19.71L5.71,21.12L12,14.83L18.3,21.12L19.71,19.71L13.41,13.41L19.71,7.12L18.3,5.71Z"/></svg>';
+            wrapper.appendChild(clearBtn);
+            input.classList.add('has-clear-control');
+
+            const updateClearState = () => {
+                clearBtn.classList.toggle('hidden', !input.value);
+            };
+            updateClearState();
+            input.addEventListener('input', updateClearState);
+            clearBtn.addEventListener('click', () => {
+                input.value = '';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.focus();
+            });
+            updateCallbacks.push(updateClearState);
+        });
+        return () => updateCallbacks.forEach((fn) => fn());
+    }
+    const updateInlineInputClearButtons = attachClearButtonsToInputs([
+        'inline-proxmox-url',
+        'inline-api-user',
+        'inline-api-tokenid'
+    ]);
+
     function setInlineViewMode(isSettingsView) {
         document.body.classList.toggle('settings-view-active', isSettingsView);
         inlineSettingsView.classList.toggle('hidden', !isSettingsView);
         mainViewContent.classList.toggle('hidden', isSettingsView);
-        const scriptsPanel = document.querySelector('.scripts-panel');
-        const saveBtn = document.getElementById('inline-save-settings-btn');
-        const scriptsPanelStyle = scriptsPanel ? window.getComputedStyle(scriptsPanel) : null;
-        const saveBtnStyle = saveBtn ? window.getComputedStyle(saveBtn) : null;
-        const resetBtnStyle = inlineResetSettingsBtn ? window.getComputedStyle(inlineResetSettingsBtn) : null;
-        const resetRect = inlineResetSettingsBtn ? inlineResetSettingsBtn.getBoundingClientRect() : null;
-        const actionsStyle = inlineSettingsActions ? window.getComputedStyle(inlineSettingsActions) : null;
-        // #region agent log
-        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H3',location:'popup/popup.js:206',message:'inline settings view mode + reset button computed visibility',data:{isSettingsView,inlineViewHidden:inlineSettingsView.classList.contains('hidden'),bodySettingsClass:document.body.classList.contains('settings-view-active'),resetExists:Boolean(inlineResetSettingsBtn),resetDisplay:resetBtnStyle?.display ?? null,resetVisibility:resetBtnStyle?.visibility ?? null,resetOpacity:resetBtnStyle?.opacity ?? null,resetWidth:resetRect ? Math.round(resetRect.width) : null,resetHeight:resetRect ? Math.round(resetRect.height) : null,actionsDisplay:actionsStyle?.display ?? null,actionsGridTemplate:actionsStyle?.gridTemplateColumns ?? null,actionsOverflow:actionsStyle?.overflow ?? null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (!isSettingsView) {
             setInlineSettingsStatus('');
         }
@@ -294,14 +321,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function populateInlineSettingsFields() {
         inlineProxmoxUrlInput.value = settings.proxmoxUrl || '';
-        inlineApiUserInput.value = settings.apiUser || '';
-        inlineApiTokenIdInput.value = settings.apiTokenId || '';
+        inlineApiUserInput.value = settings.apiUser || DEFAULT_SETTINGS.apiUser;
+        inlineApiTokenIdInput.value = settings.apiTokenId || DEFAULT_SETTINGS.apiTokenId;
         inlineApiSecretInput.value = settings.apiSecret || '';
         inlineThemeSelect.value = settings.theme || 'auto';
         inlineTabModeSelect.value = settings.consoleTabMode || 'duplicate';
         inlineDefaultActionClickModeSelect.value = ['sidepanel', 'floating'].includes(settings.defaultActionClickMode)
             ? settings.defaultActionClickMode
             : 'sidepanel';
+        updateInlineInputClearButtons();
     }
 
     function openInlineSettingsView(trigger) {
@@ -451,9 +479,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     displaySettingsBtn.addEventListener('click', () => {
         const isSettingsViewOpen = !inlineSettingsView.classList.contains('hidden');
-        // #region agent log
-        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'reset-btn-visibility-pre-fix',hypothesisId:'H1',location:'popup/popup.js:454',message:'gear click toggles settings view',data:{isSettingsViewOpenBeforeClick:isSettingsViewOpen,inlineViewHiddenBefore:inlineSettingsView.classList.contains('hidden')},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (isSettingsViewOpen) {
             closeInlineSettingsView();
             return;
@@ -504,22 +529,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             consoleTabMode: inlineTabModeSelect.value,
             defaultActionClickMode: inlineDefaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel'
         };
-        // #region agent log
-        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H1',location:'popup/popup.js:505',message:'inline save about to persist payload',data:{previousUrl,nextUrl:payload.proxmoxUrl,urlChanged:previousUrl!==payload.proxmoxUrl,tokenChanged:previousToken!==payload.apiToken,themeChanged:(settings?.theme||'auto')!==payload.theme,consoleModeChanged:(settings?.consoleTabMode||'duplicate')!==payload.consoleTabMode},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
 
         await chrome.storage.local.set(payload);
         settings = { ...settings, ...payload };
         applyTheme(payload.theme);
         setInlineSettingsStatus('Settings saved successfully!', 'success');
-        // #region agent log
-        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H3',location:'popup/popup.js:513',message:'inline save completed, post-save runtime state',data:{settingsUrlAfterSave:settings?.proxmoxUrl ?? null,apiBaseUrlStill:api?.baseUrl ?? null,sameApiAndSettingsUrl:(api?.baseUrl ?? null)===(settings?.proxmoxUrl ?? null),allResourcesCount:Array.isArray(allResources)?allResources.length:null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
+        noAuthOverlay.classList.add('hidden');
+        scriptsPanel?.classList.remove('hidden');
         const connectionChanged = previousUrl !== payload.proxmoxUrl || previousToken !== payload.apiToken;
         if (connectionChanged) {
-            // #region agent log
-            fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-post-fix',hypothesisId:'H4',location:'popup/popup.js:520',message:'connection changed, forcing runtime reload',data:{previousUrl,nextUrl:payload.proxmoxUrl,tokenChanged:previousToken!==payload.apiToken,urlChanged:previousUrl!==payload.proxmoxUrl},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             window.location.reload();
             return;
         }
@@ -549,7 +567,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             const api = new ProxmoxAPI(normalized.url, `${user}!${tokenId}=${secret}`);
             const version = await api.fetch('/version');
+            const payload = {
+                proxmoxUrl: normalized.url,
+                apiUser: user,
+                apiTokenId: tokenId,
+                apiSecret: secret,
+                apiToken: `${user}!${tokenId}=${secret}`,
+                theme: inlineThemeSelect.value,
+                consoleTabMode: inlineTabModeSelect.value,
+                defaultActionClickMode: inlineDefaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel'
+            };
+            await chrome.storage.local.set(payload);
+            settings = { ...settings, ...payload };
+            applyTheme(payload.theme);
+            noAuthOverlay.classList.add('hidden');
+            scriptsPanel?.classList.remove('hidden');
             setInlineSettingsStatus(`Connection successful! Proxmox Version: ${version.version}`, 'success');
+            window.location.reload();
         } catch (error) {
             setInlineSettingsStatus(`Connection failed: ${describeConnectionError(error)}`, 'error');
         }
@@ -574,12 +608,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         allResources = [];
 
         inlineProxmoxUrlInput.value = '';
-        inlineApiUserInput.value = '';
-        inlineApiTokenIdInput.value = '';
+        inlineApiUserInput.value = DEFAULT_SETTINGS.apiUser;
+        inlineApiTokenIdInput.value = DEFAULT_SETTINGS.apiTokenId;
         inlineApiSecretInput.value = '';
         inlineThemeSelect.value = DEFAULT_SETTINGS.theme;
         inlineTabModeSelect.value = DEFAULT_SETTINGS.consoleTabMode;
         inlineDefaultActionClickModeSelect.value = DEFAULT_SETTINGS.defaultActionClickMode;
+        updateInlineInputClearButtons();
         applyTheme(DEFAULT_SETTINGS.theme);
 
         searchInput.value = '';
@@ -1035,9 +1070,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         applyTheme(settings.theme);
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'scripts-default-pre-fix',hypothesisId:'S1',location:'popup/popup.js:1022',message:'scripts panel startup state from storage',data:{storedScriptsPanelCollapsed:settings?.scriptsPanelCollapsed ?? null,isStoredValueUndefined:typeof settings?.scriptsPanelCollapsed==='undefined'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const scriptsPanelCollapsedOnStartup = typeof settings.scriptsPanelCollapsed === 'undefined'
         ? true
         : Boolean(settings.scriptsPanelCollapsed);
@@ -1050,17 +1082,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         scriptsToggleBtn.textContent = chrome.i18n.getMessage('scriptsToggle') || 'Hide';
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'scripts-default-post-fix',hypothesisId:'S5',location:'popup/popup.js:1036',message:'scripts panel startup default resolved and applied',data:{storedScriptsPanelCollapsed:settings?.scriptsPanelCollapsed ?? null,resolvedCollapsedDefault:scriptsPanelCollapsedOnStartup,scriptsBodyHidden:scriptsBody.classList.contains('hidden'),toggleLabel:scriptsToggleBtn.textContent || null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    
     if (!settings.proxmoxUrl || !settings.apiToken) {
+        searchContainer?.classList.add('hidden');
+        scriptsPanel?.classList.add('hidden');
         loadingOverlay.classList.add('hidden');
         noAuthOverlay.classList.remove('hidden');
         return;
     }
 
-    const api = new ProxmoxAPI(settings.proxmoxUrl, settings.apiToken, settings.failoverUrls || []);
+    searchContainer?.classList.remove('hidden');
+    scriptsPanel?.classList.remove('hidden');
+
+    api = new ProxmoxAPI(settings.proxmoxUrl, settings.apiToken, settings.failoverUrls || []);
 
     const getResourceKey = (res) => (res.vmid ? `${res.node}/${res.type}/${res.vmid}` : `node/${res.node}`);
 
@@ -1114,9 +1147,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         scriptsToggleBtn.textContent = hidden
             ? (chrome.i18n.getMessage('scriptsShow') || 'Show')
             : (chrome.i18n.getMessage('scriptsToggle') || 'Hide');
-        // #region agent log
-        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'scripts-default-pre-fix',hypothesisId:'S3',location:'popup/popup.js:1090',message:'scripts panel toggled by user',data:{hiddenAfterToggle:hidden,toggleLabel:scriptsToggleBtn.textContent || null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         await chrome.storage.local.set({ scriptsPanelCollapsed: hidden });
     });
 
@@ -1175,9 +1205,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const fetchAndRender = async (showLoading = false) => {
         if (showLoading) loadingOverlay.classList.remove('hidden');
-        // #region agent log
-        fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H2',location:'popup/popup.js:1147',message:'fetchAndRender start with current api/settings',data:{showLoading,apiBaseUrl:api?.baseUrl ?? null,apiCurrentUrl:api?.currentUrl ?? null,settingsProxmoxUrl:settings?.proxmoxUrl ?? null,sameApiAndSettingsUrl:(api?.baseUrl ?? null)===(settings?.proxmoxUrl ?? null),allResourcesCount:Array.isArray(allResources)?allResources.length:null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         try {
             const resources = await api.getResources();
             allResources = resources;
@@ -1259,9 +1286,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         searchInput.focus();
         updateFailoverNodes(allResources, settings.proxmoxUrl);
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7798/ingest/8f8b8b84-5f94-4b2f-8d6c-8ff99af9d9f2',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4f7b19'},body:JSON.stringify({sessionId:'4f7b19',runId:'connection-refresh-pre-fix',hypothesisId:'H2',location:'popup/popup.js:1228',message:'api instance created on startup',data:{apiBaseUrl:api?.baseUrl ?? null,apiCurrentUrl:api?.currentUrl ?? null,settingsProxmoxUrl:settings?.proxmoxUrl ?? null,hasApiToken:Boolean(settings?.apiToken)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     async function renderResources(resources, api) {
         resourceList.innerHTML = '';

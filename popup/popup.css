@@ -482,6 +482,38 @@ body.settings-view-active #main-view-content {
     padding-right: 38px;
 }
 
+.input-with-clear {
+    position: relative;
+}
+
+.input-clear-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--hover-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.2s ease;
+}
+
+.input-clear-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+input.has-clear-control {
+    padding-right: 34px;
+}
+
 #inline-toggle-secret {
     position: absolute;
     right: 5px;
@@ -771,7 +803,8 @@ body.settings-view-active #main-view-content {
 }
 
 .header-alert .compact-btn.primary {
-    background-color: var(--error);
+    background-color: var(--brand-mux);
+    border-color: var(--brand-mux);
     color: white;
 }
 
@@ -1480,7 +1513,7 @@ body.light-theme .details-drawer {
     box-shadow: 0 4px 12px hsla(25, 80%, 50%, 0.34);
 }
 
-#no-auth button, .primary-btn {
+.primary-btn {
     margin-top: 12px;
     background-color: var(--accent);
     color: white;
