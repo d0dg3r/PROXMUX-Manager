@@ -17,9 +17,7 @@ if [[ "$use_existing" =~ ^[Yy]$ ]]; then
   read -r -p "Enter existing user (example: api-admin@pve): " user_realm
 else
   read -r -p "Enter new user (example: api-admin@pve): " user_realm
-  read -r -s -p "Enter password for ${user_realm}: " user_password
-  echo
-  pveum user add "${user_realm}" --password "${user_password}"
+  pveum user add "${user_realm}"
 fi
 
 read -r -p "ACL role to assign [Administrator]: " role_name
