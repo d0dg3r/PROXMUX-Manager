@@ -1,5 +1,20 @@
 import { ProxmoxAPI } from '../lib/proxmox-api.js';
 import { openOrFocusFloatingWindow } from '../lib/window-launcher.js';
+import {
+    createEncryptedSettingsBackup,
+    downloadEncryptedBackupFile,
+    importEncryptedSettingsFromText
+} from '../lib/settings-backup.js';
+import {
+    buildClusterPayload,
+    createClusterSkeleton,
+    getClusterList,
+    getClustersState,
+    removeClusterAndResolve,
+    resolveActiveClusterId,
+    saveClustersState
+} from '../lib/cluster-store.js';
+import { resetToFactoryDefaults } from '../lib/settings-reset.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const proxmoxUrlInput = document.getElementById('proxmox-url');
@@ -17,22 +32,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const defaultScriptNodeInput = document.getElementById('default-script-node');
     const defaultActionClickModeSelect = document.getElementById('default-action-click-mode');
     const openFloatingWindowBtn = document.getElementById('open-floating-window-btn');
-    const RESET_STORAGE_KEYS = [
-        'proxmoxUrl',
-        'apiUser',
-        'apiTokenId',
-        'apiSecret',
-        'apiToken',
-        'failoverUrls',
-        'theme',
-        'consoleTabMode',
-        'displaySettings',
-        'communityScriptsCacheTtlHours',
-        'defaultScriptNode',
-        'defaultActionClickMode',
-        'scriptsPanelCollapsed',
-        'lastBrowserWindowId'
-    ];
+    const clusterSelect = document.getElementById('cluster-select');
+    const clusterNameInput = document.getElementById('cluster-name');
+    const addClusterBtn = document.getElementById('add-cluster-btn');
+    const removeClusterBtn = document.getElementById('remove-cluster-btn');
+    const exportPasswordInput = document.getElementById('export-password');
+    const exportPasswordConfirmInput = document.getElementById('export-password-confirm');
+    const exportSettingsBtn = document.getElementById('export-settings-btn');
+    const importFileInput = document.getElementById('import-file');
+    const importPasswordInput = document.getElementById('import-password');
+    const importSettingsBtn = document.getElementById('import-settings-btn');
+    const settingsSubtabButtons = document.querySelectorAll('[data-settings-subtab]');
+    const settingsSubtabPanels = document.querySelectorAll('[data-settings-panel]');
+    let clusters = {};
+    let activeClusterId = null;
+    let pendingOptionsClusterRemovalId = null;
+    let pendingOptionsResetConfirmation = false;
     const DEFAULT_SETTINGS = {
         apiUser: 'api-admin@pve',
         apiTokenId: 'full-access',
@@ -89,10 +104,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         return () => updateCallbacks.forEach((fn) => fn());
     }
     const updateOptionsInputClearButtons = attachClearButtonsToInputs([
+        'cluster-name',
         'proxmox-url',
         'api-user',
         'api-tokenid',
-        'default-script-node'
+        'default-script-node',
+        'export-password',
+        'export-password-confirm',
+        'import-password'
     ]);
 
     function normalizeAndValidateHttpsUrl(input) {
@@ -191,6 +210,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    settingsSubtabButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            setActiveSettingsSubtab(button.dataset.settingsSubtab);
+        });
+    });
+
     // Theme Management
     function applyTheme(theme) {
         document.body.classList.remove('light-theme', 'dark-theme');
@@ -202,12 +227,108 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 'auto' does nothing, letting CSS media query handle it
     }
 
-    // Load saved settings
-    chrome.storage.local.get(['proxmoxUrl', 'apiUser', 'apiTokenId', 'apiSecret', 'theme', 'consoleTabMode', 'communityScriptsCacheTtlHours', 'defaultScriptNode', 'defaultActionClickMode'], (items) => {
-        if (items.proxmoxUrl) proxmoxUrlInput.value = items.proxmoxUrl;
-        apiUserInput.value = items.apiUser || DEFAULT_SETTINGS.apiUser;
-        apiTokenIdInput.value = items.apiTokenId || DEFAULT_SETTINGS.apiTokenId;
-        if (items.apiSecret) apiSecretInput.value = items.apiSecret;
+    function getActiveCluster() {
+        return activeClusterId ? clusters[activeClusterId] : null;
+    }
+
+    function setActiveSettingsSubtab(tab) {
+        const targetTab = tab === 'backup' ? 'backup' : 'cluster';
+        settingsSubtabButtons.forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.settingsSubtab === targetTab);
+        });
+        settingsSubtabPanels.forEach((panel) => {
+            panel.classList.toggle('active', panel.dataset.settingsPanel === targetTab);
+        });
+    }
+
+    function fillClusterForm() {
+        const cluster = getActiveCluster();
+        clusterNameInput.value = cluster?.name || '';
+        proxmoxUrlInput.value = cluster?.proxmoxUrl || '';
+        apiUserInput.value = cluster?.apiUser || DEFAULT_SETTINGS.apiUser;
+        apiTokenIdInput.value = cluster?.apiTokenId || DEFAULT_SETTINGS.apiTokenId;
+        apiSecretInput.value = cluster?.apiSecret || '';
+        updateOptionsInputClearButtons();
+    }
+
+    function renderClusterSelect() {
+        clusterSelect.innerHTML = '';
+        const options = getClusterList(clusters);
+        options.forEach((cluster) => {
+            const option = document.createElement('option');
+            option.value = cluster.id;
+            option.textContent = cluster.name;
+            clusterSelect.appendChild(option);
+        });
+        if (activeClusterId && clusters[activeClusterId]) {
+            clusterSelect.value = activeClusterId;
+        }
+        removeClusterBtn.disabled = options.length <= 1;
+    }
+
+    function resetOptionsRemoveClusterConfirmation() {
+        pendingOptionsClusterRemovalId = null;
+        if (removeClusterBtn) {
+            removeClusterBtn.textContent = 'Remove Cluster';
+        }
+    }
+
+    function resetOptionsResetConfirmation() {
+        pendingOptionsResetConfirmation = false;
+        if (resetBtn) {
+            resetBtn.textContent = chrome.i18n.getMessage('resetSettings') || 'Reset Settings';
+        }
+    }
+
+    async function persistClusterFromForm() {
+        const existing = getActiveCluster() || createClusterSkeleton(clusters, clusterNameInput.value.trim() || 'Cluster');
+        const user = apiUserInput.value.trim();
+        const tokenId = apiTokenIdInput.value.trim();
+        const secret = apiSecretInput.value.trim();
+        const apiToken = user && tokenId && secret ? `${user}!${tokenId}=${secret}` : '';
+        const updated = buildClusterPayload({
+            ...existing,
+            name: (clusterNameInput.value.trim() || existing.name || 'Cluster'),
+            proxmoxUrl: proxmoxUrlInput.value.trim(),
+            apiUser: user,
+            apiTokenId: tokenId,
+            apiSecret: secret,
+            apiToken
+        }, clusters, 'Cluster');
+        clusters = { ...clusters, [updated.id]: updated };
+        activeClusterId = resolveActiveClusterId(clusters, updated.id);
+        await saveClustersState(clusters, activeClusterId);
+        await chrome.storage.local.set({
+            activeClusterId,
+            activeClusterTabId: activeClusterId,
+            proxmoxUrl: updated.proxmoxUrl,
+            apiUser: updated.apiUser,
+            apiTokenId: updated.apiTokenId,
+            apiSecret: updated.apiSecret,
+            apiToken: updated.apiToken
+        });
+        renderClusterSelect();
+    }
+
+    async function reloadSettingsFromStorage() {
+        const items = await chrome.storage.local.get([
+            'theme',
+            'consoleTabMode',
+            'communityScriptsCacheTtlHours',
+            'defaultScriptNode',
+            'defaultActionClickMode'
+        ]);
+        const clusterState = await getClustersState();
+        clusters = clusterState.clusters;
+        activeClusterId = clusterState.activeClusterId || getClusterList(clusters)[0]?.id || null;
+        if (!activeClusterId) {
+            const blank = createClusterSkeleton(clusters, 'Cluster');
+            clusters = { ...clusters, [blank.id]: blank };
+            activeClusterId = blank.id;
+            await saveClustersState(clusters, activeClusterId);
+        }
+        renderClusterSelect();
+        fillClusterForm();
         scriptsCacheTtlInput.value = Number(items.communityScriptsCacheTtlHours || 12);
         defaultScriptNodeInput.value = items.defaultScriptNode || '';
         defaultActionClickModeSelect.value = ['sidepanel', 'floating'].includes(items.defaultActionClickMode)
@@ -216,15 +337,108 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (items.theme) {
             themeSelect.value = items.theme;
             applyTheme(items.theme);
+        } else {
+            themeSelect.value = DEFAULT_SETTINGS.theme;
+            applyTheme(DEFAULT_SETTINGS.theme);
         }
         if (items.consoleTabMode) {
             document.getElementById('tab-mode-select').value = items.consoleTabMode;
+        } else {
+            document.getElementById('tab-mode-select').value = DEFAULT_SETTINGS.consoleTabMode;
         }
         updateOptionsInputClearButtons();
-    });
+    }
+
+    await reloadSettingsFromStorage();
+    setActiveSettingsSubtab('cluster');
 
     themeSelect.addEventListener('change', () => {
         applyTheme(themeSelect.value);
+    });
+
+    clusterSelect?.addEventListener('change', async () => {
+        resetOptionsResetConfirmation();
+        const selectedId = clusterSelect.value;
+        if (!selectedId || !clusters[selectedId]) return;
+        activeClusterId = selectedId;
+        await chrome.storage.local.set({ activeClusterId, activeClusterTabId: activeClusterId });
+        resetOptionsRemoveClusterConfirmation();
+        fillClusterForm();
+    });
+
+    clusterNameInput?.addEventListener('change', async () => {
+        resetOptionsResetConfirmation();
+        const cluster = getActiveCluster();
+        if (!cluster?.id) return;
+        const updated = buildClusterPayload({
+            ...cluster,
+            name: clusterNameInput.value.trim() || cluster.name || 'Cluster'
+        }, clusters, 'Cluster');
+        clusters = { ...clusters, [cluster.id]: updated };
+        activeClusterId = resolveActiveClusterId(clusters, updated.id);
+        await saveClustersState(clusters, activeClusterId);
+        await chrome.storage.local.set({ activeClusterId, activeClusterTabId: activeClusterId });
+        renderClusterSelect();
+        resetOptionsRemoveClusterConfirmation();
+    });
+
+    addClusterBtn?.addEventListener('click', async () => {
+        resetOptionsResetConfirmation();
+        await persistClusterFromForm();
+        const newCluster = createClusterSkeleton(clusters, `Cluster ${getClusterList(clusters).length + 1}`);
+        clusters = { ...clusters, [newCluster.id]: newCluster };
+        activeClusterId = newCluster.id;
+        await saveClustersState(clusters, activeClusterId);
+        renderClusterSelect();
+        resetOptionsRemoveClusterConfirmation();
+        fillClusterForm();
+        status.textContent = 'Cluster added.';
+        status.style.color = 'var(--success)';
+    });
+
+    removeClusterBtn?.addEventListener('click', async () => {
+        resetOptionsResetConfirmation();
+        const list = getClusterList(clusters);
+        if (list.length <= 1) {
+            status.textContent = 'At least one cluster is required.';
+            status.style.color = 'var(--error)';
+            return;
+        }
+        const cluster = getActiveCluster();
+        if (!cluster) return;
+        if (pendingOptionsClusterRemovalId !== cluster.id) {
+            pendingOptionsClusterRemovalId = cluster.id;
+            if (removeClusterBtn) {
+                removeClusterBtn.textContent = 'Click again to remove';
+            }
+            status.textContent = `Click "Remove Cluster" again to delete "${cluster.name}".`;
+            status.style.color = 'var(--text-secondary)';
+            return;
+        }
+        const removed = removeClusterAndResolve(clusters, cluster.id, activeClusterId, { ensureOneCluster: true });
+        clusters = removed.clusters;
+        activeClusterId = removed.activeClusterId;
+        await saveClustersState(clusters, activeClusterId);
+        if (activeClusterId) {
+            const nextCluster = clusters[activeClusterId];
+            await chrome.storage.local.set({
+                activeClusterId,
+                activeClusterTabId: activeClusterId,
+                proxmoxUrl: nextCluster.proxmoxUrl || '',
+                apiUser: nextCluster.apiUser || '',
+                apiTokenId: nextCluster.apiTokenId || '',
+                apiSecret: nextCluster.apiSecret || '',
+                apiToken: nextCluster.apiToken || ''
+            });
+        }
+        const refreshedState = await getClustersState();
+        clusters = refreshedState.clusters;
+        activeClusterId = refreshedState.activeClusterId;
+        renderClusterSelect();
+        resetOptionsRemoveClusterConfirmation();
+        fillClusterForm();
+        status.textContent = 'Cluster removed.';
+        status.style.color = 'var(--success)';
     });
 
     // Toggle Secret Visibility
@@ -238,6 +452,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Save settings
     saveBtn.addEventListener('click', async () => {
+        resetOptionsResetConfirmation();
         const normalized = normalizeAndValidateHttpsUrl(proxmoxUrlInput.value);
         const user = apiUserInput.value.trim();
         const tokenId = apiTokenIdInput.value.trim();
@@ -254,14 +469,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const url = normalized.url;
-        const fullToken = `${user}!${tokenId}=${secret}`;
-
+        proxmoxUrlInput.value = url;
+        await persistClusterFromForm();
         await chrome.storage.local.set({
-            proxmoxUrl: url,
-            apiUser: user,
-            apiTokenId: tokenId,
-            apiSecret: secret,
-            apiToken: fullToken,
             theme: theme,
             consoleTabMode: document.getElementById('tab-mode-select').value,
             communityScriptsCacheTtlHours,
@@ -286,6 +496,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Test Connection
     testBtn.addEventListener('click', async () => {
+        resetOptionsResetConfirmation();
         const normalized = normalizeAndValidateHttpsUrl(proxmoxUrlInput.value);
         const user = apiUserInput.value.trim();
         const tokenId = apiTokenIdInput.value.trim();
@@ -310,6 +521,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const api = new ProxmoxAPI(normalized.url, fullToken);
             const version = await api.fetch('/version');
 
+            proxmoxUrlInput.value = normalized.url;
+            await persistClusterFromForm();
+
             status.textContent = `Connection successful! Proxmox Version: ${version.version}`;
             status.style.color = 'var(--success)';
         } catch (error) {
@@ -323,25 +537,67 @@ document.addEventListener('DOMContentLoaded', async () => {
         await openOrFocusFloatingWindow();
     });
 
-    resetBtn.addEventListener('click', async () => {
-        const confirmText = chrome.i18n.getMessage('resetSettingsConfirm') || 'Reset all settings to defaults?';
-        if (!window.confirm(confirmText)) {
-            status.textContent = chrome.i18n.getMessage('resetSettingsCancelled') || 'Reset cancelled.';
-            status.style.color = 'var(--text-secondary)';
+    exportSettingsBtn?.addEventListener('click', async () => {
+        resetOptionsResetConfirmation();
+        try {
+            await persistClusterFromForm();
+            const result = await createEncryptedSettingsBackup(
+                exportPasswordInput.value || '',
+                exportPasswordConfirmInput.value || ''
+            );
+            await downloadEncryptedBackupFile(result.encrypted, result.filename);
+            exportPasswordInput.value = '';
+            exportPasswordConfirmInput.value = '';
+            updateOptionsInputClearButtons();
+            status.textContent = 'Encrypted settings exported successfully.';
+            status.style.color = 'var(--success)';
+        } catch (error) {
+            status.textContent = `Export failed: ${error.message || 'Unknown error.'}`;
+            status.style.color = 'var(--error)';
+        }
+    });
+
+    importSettingsBtn?.addEventListener('click', async () => {
+        resetOptionsResetConfirmation();
+        const selectedFile = importFileInput.files?.[0];
+        if (!selectedFile) {
+            status.textContent = 'Please choose a backup file to import.';
+            status.style.color = 'var(--error)';
             return;
         }
 
-        await chrome.storage.local.remove(RESET_STORAGE_KEYS);
-        proxmoxUrlInput.value = '';
-        apiUserInput.value = DEFAULT_SETTINGS.apiUser;
-        apiTokenIdInput.value = DEFAULT_SETTINGS.apiTokenId;
-        apiSecretInput.value = '';
-        themeSelect.value = DEFAULT_SETTINGS.theme;
-        applyTheme(DEFAULT_SETTINGS.theme);
-        document.getElementById('tab-mode-select').value = DEFAULT_SETTINGS.consoleTabMode;
-        scriptsCacheTtlInput.value = DEFAULT_SETTINGS.communityScriptsCacheTtlHours;
-        defaultScriptNodeInput.value = DEFAULT_SETTINGS.defaultScriptNode;
-        defaultActionClickModeSelect.value = DEFAULT_SETTINGS.defaultActionClickMode;
+        try {
+            const rawText = await selectedFile.text();
+            await importEncryptedSettingsFromText(rawText, importPasswordInput.value || '');
+
+            resetOptionsRemoveClusterConfirmation();
+            await reloadSettingsFromStorage();
+            importPasswordInput.value = '';
+            importFileInput.value = '';
+            updateOptionsInputClearButtons();
+            status.textContent = 'Encrypted settings imported successfully.';
+            status.style.color = 'var(--success)';
+        } catch (error) {
+            status.textContent = `Import failed: ${error.message || 'Unknown error.'}`;
+            status.style.color = 'var(--error)';
+        }
+    });
+
+    resetBtn.addEventListener('click', async () => {
+        if (!pendingOptionsResetConfirmation) {
+            pendingOptionsResetConfirmation = true;
+            resetBtn.textContent = chrome.i18n.getMessage('resetSettingsConfirmAgainLabel') || 'Click again to reset';
+            status.textContent = chrome.i18n.getMessage('resetSettingsConfirmAgainHint') || 'Click "Reset Settings" again to reset all settings.';
+            status.style.color = 'var(--text-secondary)';
+            return;
+        }
+        resetOptionsResetConfirmation();
+
+        const resetResult = await resetToFactoryDefaults();
+        clusters = resetResult.clusters;
+        activeClusterId = resetResult.activeClusterId;
+        resetOptionsRemoveClusterConfirmation();
+        await reloadSettingsFromStorage();
         updateOptionsInputClearButtons();
         status.textContent = chrome.i18n.getMessage('resetSettingsSuccess') || 'Settings reset to defaults.';
         status.style.color = 'var(--success)';

@@ -41,6 +41,12 @@
     "resetSettingsCancelled": {
         "message": "Reset cancelled."
     },
+    "resetSettingsConfirmAgainLabel": {
+        "message": "Click again to reset"
+    },
+    "resetSettingsConfirmAgainHint": {
+        "message": "Click \"Reset Settings\" again to reset all settings."
+    },
     "proxmoxUrl": {
         "message": "Proxmox URL"
     },

@@ -38,6 +38,7 @@
                 </button>
             </div>
         </header>
+        <div id="cluster-tabs" class="cluster-tabs hidden" aria-label="Cluster tabs"></div>
         <div class="search-container">
                 <div class="search-wrapper">
                     <div class="search-icon">
@@ -115,7 +116,8 @@
             <div id="no-auth" class="header-alert hidden">
                 <p data-i18n="noAuthDesc">Please configure your API credentials.</p>
                 <div class="header-alert-actions">
-                    <button id="open-settings-overlay" class="compact-btn primary" data-i18n="openSettings">Settings</button>
+                    <button id="open-settings-overlay" class="compact-btn primary">Configure</button>
+                    <button id="open-import-overlay" class="compact-btn">Import Settings</button>
                 </div>
             </div>
 
@@ -182,6 +184,27 @@
                     <h2 data-i18n="settings">Settings</h2>
                 </div>
 
+                <div class="inline-settings-subtabs" role="tablist" aria-label="Settings Sections">
+                    <button type="button" class="inline-settings-subtab-btn active" data-inline-settings-subtab="cluster">Cluster</button>
+                    <button type="button" class="inline-settings-subtab-btn" data-inline-settings-subtab="backup">Backup & Restore</button>
+                </div>
+
+                <div class="inline-settings-subtab-panel active" data-inline-settings-panel="cluster">
+                <div class="inline-settings-form-row">
+                    <div class="inline-settings-form-group">
+                        <label for="inline-cluster-select">Active Cluster</label>
+                        <select id="inline-cluster-select" class="inline-form-control"></select>
+                    </div>
+                    <div class="inline-settings-form-group">
+                        <label for="inline-cluster-name">Cluster Name</label>
+                        <input type="text" id="inline-cluster-name" placeholder="Production Cluster">
+                    </div>
+                </div>
+                <div class="inline-settings-cluster-actions">
+                    <button id="inline-add-cluster-btn" type="button" class="inline-action-btn secondary">Add Cluster</button>
+                    <button id="inline-remove-cluster-btn" type="button" class="inline-action-btn secondary">Remove Cluster</button>
+                </div>
+
                 <div class="inline-settings-form-group">
                     <label for="inline-proxmox-url" data-i18n="proxmoxUrl">Proxmox URL</label>
                     <input type="text" id="inline-proxmox-url" placeholder="https://proxmox.example.com:8006">
@@ -232,6 +255,41 @@
                         <option value="sidepanel" data-i18n="clickModeSidepanel">Open side panel</option>
                         <option value="floating" data-i18n="clickModeFloating">Open floating window</option>
                     </select>
+                </div>
+                </div>
+
+                <div class="inline-settings-subtab-panel" data-inline-settings-panel="backup">
+                <div class="inline-settings-form-group inline-backup-section">
+                    <label>Backup & Restore</label>
+                    <div id="inline-backup-export-block">
+                    <div class="inline-settings-form-row">
+                        <div class="inline-settings-form-group">
+                            <label for="inline-export-password">Export Password</label>
+                            <input type="password" id="inline-export-password" placeholder="Enter export password">
+                        </div>
+                        <div class="inline-settings-form-group">
+                            <label for="inline-export-password-confirm">Confirm Password</label>
+                            <input type="password" id="inline-export-password-confirm" placeholder="Re-enter export password">
+                        </div>
+                    </div>
+                    <div class="inline-settings-cluster-actions">
+                        <button id="inline-export-settings-btn" type="button" class="inline-action-btn secondary">Export Encrypted Settings</button>
+                    </div>
+                    </div>
+                    <div class="inline-settings-form-row">
+                        <div class="inline-settings-form-group">
+                            <label for="inline-import-file">Import Backup File</label>
+                            <input type="file" id="inline-import-file" accept=".json,.secure.json,application/json">
+                        </div>
+                        <div class="inline-settings-form-group">
+                            <label for="inline-import-password">Import Password</label>
+                            <input type="password" id="inline-import-password" placeholder="Enter import password">
+                        </div>
+                    </div>
+                    <div class="inline-settings-cluster-actions">
+                        <button id="inline-import-settings-btn" type="button" class="inline-action-btn secondary">Import Encrypted Settings</button>
+                    </div>
+                </div>
                 </div>
 
                 <div class="inline-settings-actions">

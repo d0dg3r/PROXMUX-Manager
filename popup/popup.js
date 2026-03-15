@@ -1,7 +1,23 @@
 import { ProxmoxAPI } from '../lib/proxmox-api.js';
 import { getCommunityScriptsCatalog, getCommunityScriptDetails, getCommunityScriptGuide } from '../lib/community-scripts.js';
 import { buildInstallCommandForScripts } from '../lib/install-command.js';
+import {
+    createEncryptedSettingsBackup,
+    downloadEncryptedBackupFile,
+    importEncryptedSettingsFromText
+} from '../lib/settings-backup.js';
 import { openOrFocusFloatingWindow } from '../lib/window-launcher.js';
+import {
+    ALL_CLUSTERS_TAB_ID,
+    buildClusterPayload,
+    createClusterSkeleton,
+    getClusterList,
+    getClustersState,
+    removeClusterAndResolve,
+    resolveActiveClusterId,
+    saveClustersState
+} from '../lib/cluster-store.js';
+import { FACTORY_DEFAULT_DISPLAY_SETTINGS, resetToFactoryDefaults } from '../lib/settings-reset.js';
 
 const LAST_BROWSER_WINDOW_ID_KEY = 'lastBrowserWindowId';
 
@@ -16,10 +32,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const themeToggleBtn = document.getElementById('theme-toggle-btn');
     const themeIcon = document.getElementById('theme-icon');
     const openSettingsOverlayBtn = document.getElementById('open-settings-overlay');
+    const openImportOverlayBtn = document.getElementById('open-import-overlay');
     const mainViewContent = document.getElementById('main-view-content');
     const inlineSettingsView = document.getElementById('inline-settings-view');
     const searchContainer = document.querySelector('.search-container');
+    const clusterTabs = document.getElementById('cluster-tabs');
     const inlineProxmoxUrlInput = document.getElementById('inline-proxmox-url');
+    const inlineClusterSelect = document.getElementById('inline-cluster-select');
+    const inlineClusterNameInput = document.getElementById('inline-cluster-name');
+    const inlineAddClusterBtn = document.getElementById('inline-add-cluster-btn');
+    const inlineRemoveClusterBtn = document.getElementById('inline-remove-cluster-btn');
     const inlineApiUserInput = document.getElementById('inline-api-user');
     const inlineApiTokenIdInput = document.getElementById('inline-api-tokenid');
     const inlineApiSecretInput = document.getElementById('inline-api-secret');
@@ -31,6 +53,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const inlineSaveSettingsBtn = document.getElementById('inline-save-settings-btn');
     const inlineTestConnectionBtn = document.getElementById('inline-test-connection-btn');
     const inlineResetSettingsBtn = document.getElementById('inline-reset-settings-btn');
+    const inlineExportPasswordInput = document.getElementById('inline-export-password');
+    const inlineExportPasswordConfirmInput = document.getElementById('inline-export-password-confirm');
+    const inlineExportSettingsBtn = document.getElementById('inline-export-settings-btn');
+    const inlineImportFileInput = document.getElementById('inline-import-file');
+    const inlineImportPasswordInput = document.getElementById('inline-import-password');
+    const inlineImportSettingsBtn = document.getElementById('inline-import-settings-btn');
+    const inlineBackupExportBlock = document.getElementById('inline-backup-export-block');
+    const inlineSettingsSubtabButtons = document.querySelectorAll('[data-inline-settings-subtab]');
+    const inlineSettingsSubtabPanels = document.querySelectorAll('[data-inline-settings-panel]');
+    const inlineSettingsActions = document.querySelector('.inline-settings-actions');
     const inlineSettingsStatus = document.getElementById('inline-settings-status');
     const template = document.getElementById('resource-item-template');
     const currentView = new URLSearchParams(window.location.search).get('view') || 'none';
@@ -102,6 +134,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     let allResources = [];
     let settings = {};
     let api = null;
+    let clusters = {};
+    let activeClusterId = null;
+    let activeClusterTabId = ALL_CLUSTERS_TAB_ID;
+    const apiClients = new Map();
+    const resourcesByClusterId = new Map();
     const pendingStatusOverrides = new Map();
     const tagFiltersContainer = document.getElementById('tag-filters');
     const tagFiltersSection = tagFiltersContainer?.closest('.filter-section-tags');
@@ -149,22 +186,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         vmid: true,
         tags: true
     };
-    const RESET_STORAGE_KEYS = [
-        'proxmoxUrl',
-        'apiUser',
-        'apiTokenId',
-        'apiSecret',
-        'apiToken',
-        'failoverUrls',
-        'theme',
-        'displaySettings',
-        'consoleTabMode',
-        'communityScriptsCacheTtlHours',
-        'defaultScriptNode',
-        'defaultActionClickMode',
-        'scriptsPanelCollapsed',
-        LAST_BROWSER_WINDOW_ID_KEY
-    ];
     const DEFAULT_SETTINGS = {
         apiUser: 'api-admin@pve',
         apiTokenId: 'full-access',
@@ -173,13 +194,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         defaultActionClickMode: 'sidepanel'
     };
     
-    let currentExpandedId = localStorage.getItem('lastActiveResource') || null;
+    let currentExpandedId = null;
     let scriptsCatalog = [];
     let selectedScriptSlugs = new Set();
     let scriptDetailsCache = new Map();
+    let pendingInlineClusterRemovalId = null;
+    let pendingInlineResetConfirmation = false;
     let selectedScriptType = 'all';
     let currentGuidePageUrl = '';
     const activePasteFlows = new Set();
+    let inlineImportOnlyNoConfigMode = false;
     const AUTO_PASTE_TIMEOUT_MS = 1500;
     const NEW_TAB_READY_TIMEOUT_MS = 650;
     const NEW_TAB_SETTLE_DELAY_MS = 250;
@@ -230,9 +254,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return () => updateCallbacks.forEach((fn) => fn());
     }
     const updateInlineInputClearButtons = attachClearButtonsToInputs([
+        'inline-cluster-name',
         'inline-proxmox-url',
         'inline-api-user',
-        'inline-api-tokenid'
+        'inline-api-tokenid',
+        'inline-export-password',
+        'inline-export-password-confirm',
+        'inline-import-password'
     ]);
 
     function setInlineViewMode(isSettingsView) {
@@ -242,6 +270,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!isSettingsView) {
             setInlineSettingsStatus('');
         }
+    }
+
+    function setActiveInlineSettingsSubtab(tab) {
+        const targetTab = tab === 'backup' ? 'backup' : 'cluster';
+        inlineSettingsSubtabButtons.forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.inlineSettingsSubtab === targetTab);
+        });
+        inlineSettingsSubtabPanels.forEach((panel) => {
+            panel.classList.toggle('active', panel.dataset.inlineSettingsPanel === targetTab);
+        });
     }
 
     function normalizeAndValidateHttpsUrl(input) {
@@ -319,27 +357,132 @@ document.addEventListener('DOMContentLoaded', async () => {
         return message;
     }
 
+    function getEnabledClusters() {
+        return getClusterList(clusters);
+    }
+
+    function hasConfiguredCluster() {
+        return getEnabledClusters().some((cluster) => Boolean(cluster.proxmoxUrl && cluster.apiToken));
+    }
+
+    function updateInlineImportOnlyVisibility() {
+        const shouldShowImportOnly = inlineImportOnlyNoConfigMode && !hasConfiguredCluster();
+        inlineBackupExportBlock?.classList.toggle('hidden', shouldShowImportOnly);
+        inlineSaveSettingsBtn?.classList.toggle('hidden', shouldShowImportOnly);
+        inlineTestConnectionBtn?.classList.toggle('hidden', shouldShowImportOnly);
+        inlineResetSettingsBtn?.classList.remove('hidden');
+        inlineSettingsActions?.classList.toggle('import-only-mode', shouldShowImportOnly);
+    }
+
+    function getCurrentScopeId() {
+        if (activeClusterTabId === ALL_CLUSTERS_TAB_ID) return ALL_CLUSTERS_TAB_ID;
+        return activeClusterTabId || activeClusterId || 'none';
+    }
+
+    function getScopedUiKey(baseKey) {
+        return `${baseKey}:${getCurrentScopeId()}`;
+    }
+
+    function readScopedUiValue(baseKey, fallback = '') {
+        const value = localStorage.getItem(getScopedUiKey(baseKey));
+        return value ?? fallback;
+    }
+
+    function writeScopedUiValue(baseKey, value) {
+        localStorage.setItem(getScopedUiKey(baseKey), value);
+    }
+
+    function removeScopedUiValue(baseKey) {
+        localStorage.removeItem(getScopedUiKey(baseKey));
+    }
+
+    function clearAllScopedUiValues() {
+        ['lastSearchQuery', 'lastFilters', 'lastActiveResource'].forEach((baseKey) => {
+            const scopedPrefix = `${baseKey}:`;
+            const keysToRemove = [];
+            for (let index = 0; index < localStorage.length; index += 1) {
+                const key = localStorage.key(index);
+                if (!key) continue;
+                if (key === baseKey || key.startsWith(scopedPrefix)) {
+                    keysToRemove.push(key);
+                }
+            }
+            keysToRemove.forEach((key) => localStorage.removeItem(key));
+        });
+    }
+
+    function getClusterForEditing() {
+        if (activeClusterTabId !== ALL_CLUSTERS_TAB_ID && clusters[activeClusterTabId]) {
+            return clusters[activeClusterTabId];
+        }
+        return clusters[activeClusterId] || null;
+    }
+
+    function renderInlineClusterSelect() {
+        if (!inlineClusterSelect) return;
+        const enabledClusters = getEnabledClusters();
+        inlineClusterSelect.innerHTML = '';
+        enabledClusters.forEach((cluster) => {
+            const option = document.createElement('option');
+            option.value = cluster.id;
+            option.textContent = cluster.name;
+            option.title = cluster.name;
+            inlineClusterSelect.appendChild(option);
+        });
+        const editableCluster = getClusterForEditing();
+        if (editableCluster?.id) {
+            inlineClusterSelect.value = editableCluster.id;
+        }
+        if (inlineRemoveClusterBtn) {
+            inlineRemoveClusterBtn.disabled = enabledClusters.length <= 1;
+        }
+    }
+
+    function resetInlineRemoveClusterConfirmation() {
+        pendingInlineClusterRemovalId = null;
+        if (inlineRemoveClusterBtn) {
+            inlineRemoveClusterBtn.textContent = 'Remove Cluster';
+        }
+    }
+
+    function resetInlineResetConfirmation() {
+        pendingInlineResetConfirmation = false;
+        if (inlineResetSettingsBtn) {
+            inlineResetSettingsBtn.textContent = chrome.i18n.getMessage('resetSettings') || 'Reset Settings';
+        }
+    }
+
     function populateInlineSettingsFields() {
-        inlineProxmoxUrlInput.value = settings.proxmoxUrl || '';
-        inlineApiUserInput.value = settings.apiUser || DEFAULT_SETTINGS.apiUser;
-        inlineApiTokenIdInput.value = settings.apiTokenId || DEFAULT_SETTINGS.apiTokenId;
-        inlineApiSecretInput.value = settings.apiSecret || '';
+        const editableCluster = getClusterForEditing();
+        inlineClusterNameInput.value = editableCluster?.name || '';
+        inlineProxmoxUrlInput.value = editableCluster?.proxmoxUrl || '';
+        inlineApiUserInput.value = editableCluster?.apiUser || DEFAULT_SETTINGS.apiUser;
+        inlineApiTokenIdInput.value = editableCluster?.apiTokenId || DEFAULT_SETTINGS.apiTokenId;
+        inlineApiSecretInput.value = editableCluster?.apiSecret || '';
         inlineThemeSelect.value = settings.theme || 'auto';
         inlineTabModeSelect.value = settings.consoleTabMode || 'duplicate';
         inlineDefaultActionClickModeSelect.value = ['sidepanel', 'floating'].includes(settings.defaultActionClickMode)
             ? settings.defaultActionClickMode
             : 'sidepanel';
+        renderInlineClusterSelect();
         updateInlineInputClearButtons();
+        updateInlineImportOnlyVisibility();
     }
 
-    function openInlineSettingsView(trigger) {
+    function openInlineSettingsView(trigger, options = {}) {
         const scriptsPanel = document.querySelector('.scripts-panel');
         const scriptsInsideMain = Boolean(scriptsPanel && mainViewContent && mainViewContent.contains(scriptsPanel));
+        inlineImportOnlyNoConfigMode = Boolean(options.importOnlyWhenNoConfig && options.targetSubtab === 'backup');
         populateInlineSettingsFields();
+        setActiveInlineSettingsSubtab(options.targetSubtab === 'backup' ? 'backup' : 'cluster');
+        updateInlineImportOnlyVisibility();
         setInlineViewMode(true);
     }
 
     function closeInlineSettingsView() {
+        inlineImportOnlyNoConfigMode = false;
+        updateInlineImportOnlyVisibility();
+        resetInlineResetConfirmation();
         setInlineViewMode(false);
     }
 
@@ -350,14 +493,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const resetSearch = () => {
         if (!searchInput.value) return;
         searchInput.value = '';
-        localStorage.setItem('lastSearchQuery', '');
+        writeScopedUiValue('lastSearchQuery', '');
         updateSearchClearState();
         filterAndRender();
         searchInput.focus();
     };
 
     searchInput.addEventListener('input', () => {
-        localStorage.setItem('lastSearchQuery', searchInput.value);
+        writeScopedUiValue('lastSearchQuery', searchInput.value);
         updateSearchClearState();
         filterAndRender();
     });
@@ -406,7 +549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (activeFilters.status !== 'all') pill.classList.add('active');
             }
 
-            localStorage.setItem('lastFilters', JSON.stringify(activeFilters));
+            writeScopedUiValue('lastFilters', JSON.stringify(activeFilters));
             filterAndRender();
         });
     });
@@ -444,10 +587,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.close();
     });
     openSettingsOverlayBtn.addEventListener('click', () => {
-        openInlineSettingsView('overlay_settings_button');
+        resetInlineResetConfirmation();
+        openInlineSettingsView('overlay_settings_button', { targetSubtab: 'cluster' });
+    });
+    openImportOverlayBtn?.addEventListener('click', () => {
+        resetInlineResetConfirmation();
+        openInlineSettingsView('overlay_import_button', { targetSubtab: 'backup', importOnlyWhenNoConfig: true });
     });
     refreshBtn.addEventListener('click', () => {
-        localStorage.removeItem('lastActiveResource');
+        removeScopedUiValue('lastActiveResource');
         currentExpandedId = null;
         fetchAndRender();
     });
@@ -506,7 +654,181 @@ document.addEventListener('DOMContentLoaded', async () => {
         applyTheme(inlineThemeSelect.value);
     });
 
+    inlineSettingsSubtabButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            if (button.dataset.inlineSettingsSubtab !== 'backup') {
+                inlineImportOnlyNoConfigMode = false;
+            }
+            resetInlineResetConfirmation();
+            setActiveInlineSettingsSubtab(button.dataset.inlineSettingsSubtab);
+            updateInlineImportOnlyVisibility();
+        });
+    });
+
+    inlineExportSettingsBtn?.addEventListener('click', async () => {
+        resetInlineResetConfirmation();
+        try {
+            const result = await createEncryptedSettingsBackup(
+                inlineExportPasswordInput.value || '',
+                inlineExportPasswordConfirmInput.value || ''
+            );
+            await downloadEncryptedBackupFile(result.encrypted, result.filename);
+            inlineExportPasswordInput.value = '';
+            inlineExportPasswordConfirmInput.value = '';
+            updateInlineInputClearButtons();
+            setInlineSettingsStatus('Encrypted settings exported successfully.', 'success');
+        } catch (error) {
+            setInlineSettingsStatus(`Export failed: ${error.message || 'Unknown error.'}`, 'error');
+        }
+    });
+
+    inlineImportSettingsBtn?.addEventListener('click', async () => {
+        resetInlineResetConfirmation();
+        const selectedFile = inlineImportFileInput.files?.[0];
+        if (!selectedFile) {
+            setInlineSettingsStatus('Please choose a backup file to import.', 'error');
+            return;
+        }
+
+        try {
+            const rawText = await selectedFile.text();
+            await importEncryptedSettingsFromText(rawText, inlineImportPasswordInput.value || '');
+            inlineImportPasswordInput.value = '';
+            inlineImportFileInput.value = '';
+            inlineImportOnlyNoConfigMode = false;
+            updateInlineInputClearButtons();
+            updateInlineImportOnlyVisibility();
+            setInlineSettingsStatus('Encrypted settings imported successfully. Reloading...', 'success');
+            window.location.reload();
+        } catch (error) {
+            setInlineSettingsStatus(`Import failed: ${error.message || 'Unknown error.'}`, 'error');
+        }
+    });
+
+    inlineClusterSelect?.addEventListener('change', async () => {
+        resetInlineResetConfirmation();
+        const selectedId = inlineClusterSelect.value;
+        if (!selectedId || !clusters[selectedId]) return;
+        activeClusterId = selectedId;
+        activeClusterTabId = selectedId;
+        setActiveClusterContext(activeClusterId);
+        await persistClusterContext();
+        resetInlineRemoveClusterConfirmation();
+        populateInlineSettingsFields();
+    });
+
+    inlineClusterNameInput?.addEventListener('change', async () => {
+        resetInlineResetConfirmation();
+        const current = getClusterForEditing();
+        if (!current?.id) return;
+        const nextName = inlineClusterNameInput.value.trim() || current.name || 'Cluster';
+        clusters = {
+            ...clusters,
+            [current.id]: buildClusterPayload({ ...current, name: nextName }, clusters, 'Cluster')
+        };
+        activeClusterId = resolveActiveClusterId(clusters, current.id);
+        if (activeClusterTabId !== ALL_CLUSTERS_TAB_ID) {
+            activeClusterTabId = activeClusterId || ALL_CLUSTERS_TAB_ID;
+        }
+        await saveClustersState(clusters, activeClusterId);
+        await persistClusterContext();
+        renderClusterTabs();
+        renderInlineClusterSelect();
+    });
+
+    inlineAddClusterBtn?.addEventListener('click', async () => {
+        resetInlineResetConfirmation();
+        const baseName = `Cluster ${getEnabledClusters().length + 1}`;
+        const cluster = createClusterSkeleton(clusters, baseName);
+        clusters = { ...clusters, [cluster.id]: cluster };
+        activeClusterId = resolveActiveClusterId(clusters, cluster.id);
+        activeClusterTabId = activeClusterId || ALL_CLUSTERS_TAB_ID;
+        await saveClustersState(clusters, activeClusterId);
+        setActiveClusterContext(activeClusterId);
+        syncClusterApiClients();
+        await persistClusterContext();
+        renderClusterTabs();
+        resetInlineRemoveClusterConfirmation();
+        populateInlineSettingsFields();
+        inlineClusterNameInput?.focus();
+        setInlineSettingsStatus('Cluster added.', 'success');
+    });
+
+    inlineRemoveClusterBtn?.addEventListener('click', async () => {
+        resetInlineResetConfirmation();
+        const current = getClusterForEditing();
+        if (!current?.id) return;
+        const enabledClusters = getEnabledClusters();
+        if (enabledClusters.length <= 1) {
+            setInlineSettingsStatus('At least one cluster is required.', 'error');
+            return;
+        }
+        if (pendingInlineClusterRemovalId !== current.id) {
+            pendingInlineClusterRemovalId = current.id;
+            if (inlineRemoveClusterBtn) {
+                inlineRemoveClusterBtn.textContent = 'Click again to remove';
+            }
+            setInlineSettingsStatus(`Click "Remove Cluster" again to delete "${current.name}".`, 'info');
+            return;
+        }
+        const removed = removeClusterAndResolve(clusters, current.id, activeClusterId);
+        clusters = removed.clusters;
+        activeClusterId = removed.activeClusterId;
+        activeClusterTabId = activeClusterId || ALL_CLUSTERS_TAB_ID;
+        await saveClustersState(clusters, activeClusterId);
+        const refreshedState = await getClustersState();
+        clusters = refreshedState.clusters;
+        activeClusterId = refreshedState.activeClusterId;
+        activeClusterTabId = activeClusterId || ALL_CLUSTERS_TAB_ID;
+        setActiveClusterContext(activeClusterId);
+        syncClusterApiClients();
+        await persistClusterContext();
+        await setActiveClusterTab(activeClusterTabId);
+        resetInlineRemoveClusterConfirmation();
+        populateInlineSettingsFields();
+        setInlineSettingsStatus('Cluster removed.', 'success');
+    });
+
+    async function persistActiveClusterPayload(payload) {
+        const editingCluster = getClusterForEditing();
+        const updatedCluster = buildClusterPayload({
+            ...(editingCluster || {}),
+            name: inlineClusterNameInput.value.trim() || editingCluster?.name || 'Cluster',
+            proxmoxUrl: payload.proxmoxUrl,
+            apiUser: payload.apiUser,
+            apiTokenId: payload.apiTokenId,
+            apiSecret: payload.apiSecret,
+            apiToken: payload.apiToken,
+            isEnabled: true
+        }, clusters, 'Cluster');
+        clusters = {
+            ...clusters,
+            [updatedCluster.id]: updatedCluster
+        };
+        activeClusterId = resolveActiveClusterId(clusters, updatedCluster.id);
+        if (activeClusterTabId !== ALL_CLUSTERS_TAB_ID || !activeClusterTabId) {
+            activeClusterTabId = activeClusterId || ALL_CLUSTERS_TAB_ID;
+        }
+        await saveClustersState(clusters, activeClusterId);
+        await chrome.storage.local.set({
+            activeClusterId,
+            proxmoxUrl: payload.proxmoxUrl,
+            apiUser: payload.apiUser,
+            apiTokenId: payload.apiTokenId,
+            apiSecret: payload.apiSecret,
+            apiToken: payload.apiToken,
+            theme: payload.theme,
+            consoleTabMode: payload.consoleTabMode,
+            defaultActionClickMode: payload.defaultActionClickMode
+        });
+        syncClusterApiClients();
+        setActiveClusterContext(activeClusterId);
+        renderClusterTabs();
+        renderInlineClusterSelect();
+    }
+
     inlineSaveSettingsBtn.addEventListener('click', async () => {
+        resetInlineResetConfirmation();
         const normalized = normalizeAndValidateHttpsUrl(inlineProxmoxUrlInput.value);
         const user = inlineApiUserInput.value.trim();
         const tokenId = inlineApiTokenIdInput.value.trim();
@@ -530,9 +852,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             defaultActionClickMode: inlineDefaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel'
         };
 
-        await chrome.storage.local.set(payload);
+        await persistActiveClusterPayload(payload);
         settings = { ...settings, ...payload };
         applyTheme(payload.theme);
+        inlineImportOnlyNoConfigMode = false;
+        updateInlineImportOnlyVisibility();
         setInlineSettingsStatus('Settings saved successfully!', 'success');
         noAuthOverlay.classList.add('hidden');
         scriptsPanel?.classList.remove('hidden');
@@ -549,6 +873,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     inlineTestConnectionBtn.addEventListener('click', async () => {
+        resetInlineResetConfirmation();
         const normalized = normalizeAndValidateHttpsUrl(inlineProxmoxUrlInput.value);
         const user = inlineApiUserInput.value.trim();
         const tokenId = inlineApiTokenIdInput.value.trim();
@@ -577,9 +902,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 consoleTabMode: inlineTabModeSelect.value,
                 defaultActionClickMode: inlineDefaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel'
             };
-            await chrome.storage.local.set(payload);
+            await persistActiveClusterPayload(payload);
             settings = { ...settings, ...payload };
             applyTheme(payload.theme);
+            inlineImportOnlyNoConfigMode = false;
+            updateInlineImportOnlyVisibility();
             noAuthOverlay.classList.add('hidden');
             scriptsPanel?.classList.remove('hidden');
             setInlineSettingsStatus(`Connection successful! Proxmox Version: ${version.version}`, 'success');
@@ -590,32 +917,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     inlineResetSettingsBtn.addEventListener('click', async () => {
-        const confirmText = chrome.i18n.getMessage('resetSettingsConfirm') || 'Reset all settings to defaults?';
-        if (!window.confirm(confirmText)) {
-            setInlineSettingsStatus(chrome.i18n.getMessage('resetSettingsCancelled') || 'Reset cancelled.', 'info');
+        if (!pendingInlineResetConfirmation) {
+            pendingInlineResetConfirmation = true;
+            inlineResetSettingsBtn.textContent = chrome.i18n.getMessage('resetSettingsConfirmAgainLabel') || 'Click again to reset';
+            setInlineSettingsStatus(
+                chrome.i18n.getMessage('resetSettingsConfirmAgainHint') || 'Click "Reset Settings" again to reset all settings.',
+                'info'
+            );
             return;
         }
+        resetInlineResetConfirmation();
 
-        await chrome.storage.local.remove(RESET_STORAGE_KEYS);
-        localStorage.removeItem('lastSearchQuery');
-        localStorage.removeItem('lastFilters');
-        localStorage.removeItem('lastActiveResource');
+        const resetResult = await resetToFactoryDefaults();
+        clusters = resetResult.clusters;
+        activeClusterId = resetResult.activeClusterId;
+        activeClusterTabId = resetResult.activeClusterTabId || ALL_CLUSTERS_TAB_ID;
+        syncClusterApiClients();
+        setActiveClusterContext(activeClusterId);
+        await persistClusterContext();
+        clearAllScopedUiValues();
 
-        settings = {};
-        displaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
+        settings = {
+            ...settings,
+            theme: resetResult.storagePayload.theme,
+            consoleTabMode: resetResult.storagePayload.consoleTabMode,
+            defaultActionClickMode: resetResult.storagePayload.defaultActionClickMode,
+            communityScriptsCacheTtlHours: resetResult.storagePayload.communityScriptsCacheTtlHours,
+            defaultScriptNode: resetResult.storagePayload.defaultScriptNode,
+            scriptsPanelCollapsed: resetResult.storagePayload.scriptsPanelCollapsed
+        };
+        displaySettings = { ...FACTORY_DEFAULT_DISPLAY_SETTINGS };
         activeFilters = { type: 'all', status: 'all', tag: null };
         currentExpandedId = null;
         allResources = [];
+        resourcesByClusterId.clear();
+        pendingStatusOverrides.clear();
 
-        inlineProxmoxUrlInput.value = '';
-        inlineApiUserInput.value = DEFAULT_SETTINGS.apiUser;
-        inlineApiTokenIdInput.value = DEFAULT_SETTINGS.apiTokenId;
-        inlineApiSecretInput.value = '';
-        inlineThemeSelect.value = DEFAULT_SETTINGS.theme;
-        inlineTabModeSelect.value = DEFAULT_SETTINGS.consoleTabMode;
-        inlineDefaultActionClickModeSelect.value = DEFAULT_SETTINGS.defaultActionClickMode;
-        updateInlineInputClearButtons();
-        applyTheme(DEFAULT_SETTINGS.theme);
+        populateInlineSettingsFields();
 
         searchInput.value = '';
         updateSearchClearState();
@@ -632,10 +970,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         syncDisplaySettingsCheckboxes();
         applyDisplaySettings();
         resourceList.innerHTML = '';
+        searchContainer?.classList.add('hidden');
+        scriptsPanel?.classList.add('hidden');
+        clusterTabs?.classList.add('hidden');
         tagFiltersContainer?.classList.add('hidden');
         tagFiltersSection?.classList.add('hidden');
         noAuthOverlay.classList.remove('hidden');
         loadingOverlay.classList.add('hidden');
+        renderClusterTabs();
         setInlineSettingsStatus(chrome.i18n.getMessage('resetSettingsSuccess') || 'Settings reset to defaults.', 'success');
         closeInlineSettingsView();
     });
@@ -1043,21 +1385,140 @@ document.addEventListener('DOMContentLoaded', async () => {
         return firstNode ? firstNode.node : '';
     }
 
+    function syncClusterApiClients() {
+        apiClients.clear();
+        getEnabledClusters().forEach((cluster) => {
+            if (!cluster.proxmoxUrl || !cluster.apiToken) return;
+            apiClients.set(cluster.id, new ProxmoxAPI(cluster.proxmoxUrl, cluster.apiToken, cluster.failoverUrls || []));
+        });
+    }
+
+    function setGlobalSettingsFromStore(stored) {
+        settings = {
+            ...stored,
+            theme: stored.theme || DEFAULT_SETTINGS.theme,
+            consoleTabMode: stored.consoleTabMode || DEFAULT_SETTINGS.consoleTabMode,
+            defaultActionClickMode: stored.defaultActionClickMode || DEFAULT_SETTINGS.defaultActionClickMode
+        };
+    }
+
+    function setActiveClusterContext(clusterId) {
+        if (clusterId && clusters[clusterId]) {
+            activeClusterId = clusterId;
+        } else if (!activeClusterId || !clusters[activeClusterId]) {
+            activeClusterId = getEnabledClusters()[0]?.id || null;
+        }
+        const cluster = activeClusterId ? clusters[activeClusterId] : null;
+        settings = {
+            ...settings,
+            proxmoxUrl: cluster?.proxmoxUrl || '',
+            apiUser: cluster?.apiUser || DEFAULT_SETTINGS.apiUser,
+            apiTokenId: cluster?.apiTokenId || DEFAULT_SETTINGS.apiTokenId,
+            apiSecret: cluster?.apiSecret || '',
+            apiToken: cluster?.apiToken || '',
+            failoverUrls: cluster?.failoverUrls || []
+        };
+    }
+
+    async function persistClusterContext() {
+        await chrome.storage.local.set({
+            activeClusterId,
+            activeClusterTabId
+        });
+    }
+
+    function renderClusterTabs() {
+        if (!clusterTabs) return;
+        const enabledClusters = getEnabledClusters();
+        clusterTabs.innerHTML = '';
+
+        if (!enabledClusters.length) {
+            clusterTabs.classList.add('hidden');
+            return;
+        }
+        clusterTabs.classList.remove('hidden');
+
+        const allTab = document.createElement('button');
+        allTab.type = 'button';
+        allTab.className = `cluster-tab ${activeClusterTabId === ALL_CLUSTERS_TAB_ID ? 'active' : ''} all-clusters`;
+        allTab.dataset.clusterTab = ALL_CLUSTERS_TAB_ID;
+        allTab.innerHTML = '<span class="cluster-tab-icon">stack</span><span>All Clusters</span>';
+        clusterTabs.appendChild(allTab);
+
+        enabledClusters.forEach((cluster) => {
+            const tab = document.createElement('button');
+            tab.type = 'button';
+            tab.className = `cluster-tab ${activeClusterTabId === cluster.id ? 'active' : ''}`;
+            tab.dataset.clusterTab = cluster.id;
+            tab.title = cluster.name;
+            tab.innerHTML = `<span class="cluster-status-dot"></span><span>${cluster.name}</span>`;
+            clusterTabs.appendChild(tab);
+        });
+    }
+
+    async function setActiveClusterTab(nextTabId) {
+        const enabledClusterIds = new Set(getEnabledClusters().map((cluster) => cluster.id));
+        if (nextTabId !== ALL_CLUSTERS_TAB_ID && !enabledClusterIds.has(nextTabId)) {
+            nextTabId = activeClusterId || ALL_CLUSTERS_TAB_ID;
+        }
+        activeClusterTabId = nextTabId || ALL_CLUSTERS_TAB_ID;
+        if (activeClusterTabId !== ALL_CLUSTERS_TAB_ID) {
+            activeClusterId = activeClusterTabId;
+        }
+        setActiveClusterContext(activeClusterId);
+        api = activeClusterId ? apiClients.get(activeClusterId) || null : null;
+        currentExpandedId = readScopedUiValue('lastActiveResource', '') || null;
+        const savedSearch = readScopedUiValue('lastSearchQuery', '');
+        searchInput.value = savedSearch;
+        updateSearchClearState();
+        const savedFilters = readScopedUiValue('lastFilters', '');
+        if (savedFilters) {
+            try {
+                activeFilters = JSON.parse(savedFilters);
+            } catch (_error) {
+                activeFilters = { type: 'all', status: 'all', tag: null };
+            }
+        } else {
+            activeFilters = { type: 'all', status: 'all', tag: null };
+        }
+        filterPills.forEach((pill) => pill.classList.remove('active'));
+        document.querySelector('.filter-pill[data-filter-type="all"]')?.classList.add('active');
+        document.querySelector(`.filter-pill[data-filter-type="${activeFilters.type}"]`)?.classList.add('active');
+        if (activeFilters.status && activeFilters.status !== 'all') {
+            document.querySelector(`.filter-pill[data-filter-status="${activeFilters.status}"]`)?.classList.add('active');
+        }
+        renderClusterTabs();
+        await persistClusterContext();
+        await fetchAndRender(true);
+        searchInput.focus();
+    }
+
+    clusterTabs?.addEventListener('click', async (event) => {
+        const tab = event.target.closest('[data-cluster-tab]');
+        if (!tab) return;
+        const nextTabId = tab.dataset.clusterTab;
+        if (!nextTabId || nextTabId === activeClusterTabId) return;
+        await setActiveClusterTab(nextTabId);
+    });
+
     // Load saved settings
     const stored = await chrome.storage.local.get([
-        'proxmoxUrl',
-        'apiUser',
-        'apiTokenId',
-        'apiSecret',
-        'apiToken',
-        'failoverUrls',
         'theme',
         'displaySettings',
+        'consoleTabMode',
         'communityScriptsCacheTtlHours',
         'defaultScriptNode',
-        'scriptsPanelCollapsed'
+        'defaultActionClickMode',
+        'scriptsPanelCollapsed',
+        'activeClusterTabId'
     ]);
-    settings = stored;
+    setGlobalSettingsFromStore(stored);
+    const clusterState = await getClustersState();
+    clusters = clusterState.clusters;
+    activeClusterId = clusterState.activeClusterId;
+    activeClusterTabId = stored.activeClusterTabId || activeClusterId || ALL_CLUSTERS_TAB_ID;
+    syncClusterApiClients();
+    setActiveClusterContext(activeClusterId);
     populateInlineSettingsFields();
     
     if (settings.displaySettings) {
@@ -1082,9 +1543,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         scriptsToggleBtn.textContent = chrome.i18n.getMessage('scriptsToggle') || 'Hide';
     }
-    if (!settings.proxmoxUrl || !settings.apiToken) {
+    if (!getEnabledClusters().length) {
         searchContainer?.classList.add('hidden');
         scriptsPanel?.classList.add('hidden');
+        clusterTabs?.classList.add('hidden');
         loadingOverlay.classList.add('hidden');
         noAuthOverlay.classList.remove('hidden');
         return;
@@ -1092,10 +1554,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     searchContainer?.classList.remove('hidden');
     scriptsPanel?.classList.remove('hidden');
+    renderClusterTabs();
+    await persistClusterContext();
+    api = activeClusterId ? apiClients.get(activeClusterId) || null : null;
 
-    api = new ProxmoxAPI(settings.proxmoxUrl, settings.apiToken, settings.failoverUrls || []);
-
-    const getResourceKey = (res) => (res.vmid ? `${res.node}/${res.type}/${res.vmid}` : `node/${res.node}`);
+    const getResourceKey = (res) => {
+        const clusterKey = res.__clusterId || activeClusterId || 'single';
+        return res.vmid ? `${clusterKey}/${res.node}/${res.type}/${res.vmid}` : `${clusterKey}/node/${res.node}`;
+    };
 
     scriptsSearchInput.addEventListener('input', () => {
         updateScriptsSearchClearState();
@@ -1174,7 +1640,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             setScriptsFeedback(chrome.i18n.getMessage('scriptsCopiedOpening') || 'Commands copied. Opening shell...', 'success');
-            const consoleOpenResult = await openConsole(targetNode, 'node', null, targetNode);
+            const consoleOpenResult = await openConsole(targetNode, 'node', null, targetNode, api, activeClusterId);
             if (!consoleOpenResult?.tabId) {
                 setScriptsFeedback(
                     chrome.i18n.getMessage('scriptsCopiedOpenFailed') || 'Commands copied. Could not detect shell tab. Paste manually.',
@@ -1206,14 +1672,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     const fetchAndRender = async (showLoading = false) => {
         if (showLoading) loadingOverlay.classList.remove('hidden');
         try {
-            const resources = await api.getResources();
-            allResources = resources;
+            const enabledClusters = getEnabledClusters();
+            resourcesByClusterId.clear();
+            if (activeClusterTabId === ALL_CLUSTERS_TAB_ID) {
+                const results = await Promise.all(enabledClusters.map(async (cluster) => {
+                    const client = apiClients.get(cluster.id);
+                    if (!client) return [];
+                    const resources = await client.getResources();
+                    const tagged = resources.map((resource) => ({
+                        ...resource,
+                        __clusterId: cluster.id,
+                        __clusterName: cluster.name
+                    }));
+                    resourcesByClusterId.set(cluster.id, tagged);
+                    return tagged;
+                }));
+                allResources = results.flat();
+            } else {
+                const cluster = clusters[activeClusterTabId] || clusters[activeClusterId];
+                const clusterId = cluster?.id;
+                const client = clusterId ? apiClients.get(clusterId) : null;
+                if (!client || !clusterId) {
+                    allResources = [];
+                } else {
+                    const resources = await client.getResources();
+                    allResources = resources.map((resource) => ({
+                        ...resource,
+                        __clusterId: clusterId,
+                        __clusterName: cluster.name
+                    }));
+                    resourcesByClusterId.set(clusterId, allResources);
+                    api = client;
+                }
+            }
 
             // Keep optimistic status changes until cluster/resources catches up.
             allResources.forEach(resource => {
                 const key = getResourceKey(resource);
                 if (!pendingStatusOverrides.has(key)) return;
-
                 const expectedStatus = pendingStatusOverrides.get(key);
                 if (resource.status === expectedStatus) {
                     pendingStatusOverrides.delete(key);
@@ -1222,6 +1718,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
 
+            renderTagFilters(allResources);
             filterAndRender();
             renderScriptNodeOptions(allResources);
         } catch (error) {
@@ -1258,36 +1755,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateScriptsTypeFilterButtons();
 
     // Initial load
-    fetchAndRender(true).then(() => {
-        // Restore Search & Filters
-        const savedSearch = localStorage.getItem('lastSearchQuery');
-        if (savedSearch) {
-            searchInput.value = savedSearch;
-        }
-        updateSearchClearState();
-        const savedFilters = localStorage.getItem('lastFilters');
-        if (savedFilters) {
-            activeFilters = JSON.parse(savedFilters);
-            // Update UI for restored filters
-            filterPills.forEach(pill => {
-                const pType = pill.getAttribute('data-filter-type');
-                const pStatus = pill.getAttribute('data-filter-status');
-                pill.classList.remove('active');
-                if (pType === activeFilters.type) pill.classList.add('active');
-                if (pStatus === activeFilters.status && pStatus !== 'all') pill.classList.add('active');
-            });
-        }
+    await setActiveClusterTab(activeClusterTabId || activeClusterId || ALL_CLUSTERS_TAB_ID);
+    renderTagFilters(allResources);
+    updateFailoverNodes(allResources, settings.proxmoxUrl);
 
-        if (savedSearch || savedFilters) {
-            filterAndRender();
-        }
-        
-        renderTagFilters(allResources);
-        searchInput.focus();
-        updateFailoverNodes(allResources, settings.proxmoxUrl);
-    });
-
-    async function renderResources(resources, api) {
+    async function renderResources(resources) {
         resourceList.innerHTML = '';
         
         // Sort: Nodes first, then Running VMs, then Stopped VMs
@@ -1302,11 +1774,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         for (const res of sorted) {
+            const resourceApi = apiClients.get(res.__clusterId) || api;
             const clone = template.content.cloneNode(true);
             const item = clone.querySelector('.resource-item');
             
             // Set unique ID for persistence
-            const resId = res.vmid ? `vm-${res.vmid}` : `node-${res.node}`;
+            const clusterSegment = res.__clusterId || activeClusterId || 'cluster';
+            const resId = res.vmid ? `vm-${clusterSegment}-${res.vmid}` : `node-${clusterSegment}-${res.node}`;
             item.setAttribute('data-id', resId);
 
             const itemMain = clone.querySelector('.item-main');
@@ -1334,6 +1808,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             nameEl.textContent = res.name || res.vmid || res.node;
             typeNodeEl.textContent = `${res.type.toUpperCase()} @ ${res.node}`;
+            if (activeClusterTabId === ALL_CLUSTERS_TAB_ID && res.__clusterName) {
+                const clusterBadge = document.createElement('span');
+                clusterBadge.className = 'cluster-resource-badge';
+                clusterBadge.textContent = res.__clusterName;
+                typeNodeEl.appendChild(clusterBadge);
+            }
             if (res.vmid) {
                 nodeIdEl.textContent = `(ID ${res.vmid})`;
             }
@@ -1357,9 +1837,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 item.classList.toggle('expanded');
                 currentExpandedId = item.classList.contains('expanded') ? resId : null;
                 if (currentExpandedId) {
-                    localStorage.setItem('lastActiveResource', currentExpandedId);
+                    writeScopedUiValue('lastActiveResource', currentExpandedId);
                 } else {
-                    localStorage.removeItem('lastActiveResource');
+                    removeScopedUiValue('lastActiveResource');
                 }
             });
 
@@ -1367,8 +1847,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateUsageStats(clone, res);
 
             // Fetch details (IP, OS, Disks) for all types if status allows
-            if (res.status === 'running' || res.status === 'online' || res.type === 'node') {
-                api.getResourceDetails(res).then(details => {
+            if (resourceApi && (res.status === 'running' || res.status === 'online' || res.type === 'node')) {
+                resourceApi.getResourceDetails(res).then(details => {
                     // Update stats with potentially more accurate data from status/current
                     updateUsageStats(item, res);
 
@@ -1491,11 +1971,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     try {
                         let currentStatus;
                         if (res.type === 'node') {
-                            const data = await api.getNodeStatus(res.node);
+                            const data = await resourceApi.getNodeStatus(res.node);
                             // Proxmox nodes report 'online' when up
                             currentStatus = data.status === 'online' ? 'running' : 'stopped';
                         } else {
-                            const data = await api.getResourceStatus(res.node, res.type, res.vmid);
+                            const data = await resourceApi.getResourceStatus(res.node, res.type, res.vmid);
                             currentStatus = data.status;
                         }
 
@@ -1530,15 +2010,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 try {
                     if (res.type === 'node') {
-                        await api.nodeAction(res.node, action);
+                        await resourceApi.nodeAction(res.node, action);
                     } else {
-                        await api.vmAction(res.node, res.type, res.vmid, action);
+                        await resourceApi.vmAction(res.node, res.type, res.vmid, action);
                     }
                     powerStatus.textContent = chrome.i18n.getMessage('actionSent') || 'Action sent!';
                     
                     // Store the ID to scroll/expand back to it after reload
-                    const resId = res.vmid ? `vm-${res.vmid}` : `node-${res.node}`;
-                    localStorage.setItem('lastActiveResource', resId);
+                    const clusterSegment = res.__clusterId || activeClusterId || 'cluster';
+                    const resId = res.vmid ? `vm-${clusterSegment}-${res.vmid}` : `node-${clusterSegment}-${res.node}`;
+                    writeScopedUiValue('lastActiveResource', resId);
 
                     // Determine target status for polling
                     if (action === 'start') {
@@ -1570,21 +2051,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 shellBtn.classList.remove('hidden');
                 shellBtn.onclick = (e) => {
                     e.stopPropagation();
-                    openConsole(res.node, 'node', null, res.node);
+                    openConsole(res.node, 'node', null, res.node, resourceApi, res.__clusterId);
                 };
             } else {
                 novncBtn.onclick = (e) => {
                     e.stopPropagation();
-                    openConsole(res.node, res.type, res.vmid, res.name);
+                    openConsole(res.node, res.type, res.vmid, res.name, resourceApi, res.__clusterId);
                 };
 
                 if (res.type === 'qemu' && res.status === 'running') {
-                    api.isSpiceEnabled(res.node, res.type, res.vmid).then(enabled => {
+                    resourceApi?.isSpiceEnabled(res.node, res.type, res.vmid).then(enabled => {
                         if (enabled) {
                             spiceBtn.classList.remove('hidden');
                             spiceBtn.onclick = (e) => {
                                 e.stopPropagation();
-                                downloadSpiceFile(res, api);
+                                downloadSpiceFile(res, resourceApi);
                             };
                         }
                     });
@@ -1854,13 +2335,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function openConsole(node, type, vmid, name) {
+    async function openConsole(node, type, vmid, name, apiOverride = null, clusterId = null) {
+        const targetApi = apiOverride || api;
+        if (!targetApi) return null;
+        const clusterUrl = clusterId && clusters[clusterId]?.proxmoxUrl
+            ? clusters[clusterId].proxmoxUrl
+            : settings.proxmoxUrl;
         debugStatus.style.display = 'block';
         debugStatus.textContent = 'Checking session...';
         console.log(`[Popup] Attempting to open console for ${node} ${vmid || ''}`);
         
         try {
-            const hasSession = await api.checkSession();
+            const hasSession = await targetApi.checkSession();
             console.log(`[Popup] Session check result: ${hasSession}`);
             
             if (!hasSession) {
@@ -1870,7 +2356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return null;
             }
             
-            const url = api.getConsoleUrl(node, type, vmid, name);
+            const url = targetApi.getConsoleUrl(node, type, vmid, name);
             if (!url) return null;
 
             const tabSettings = await chrome.storage.local.get(['consoleTabMode']);
@@ -1878,7 +2364,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (mode === 'single') {
                 // Reuse any existing Proxmox console tab (novnc or xtermjs)
-                const tabs = await chrome.tabs.query({ url: `${settings.proxmoxUrl}/*` });
+                const tabs = await chrome.tabs.query({ url: `${clusterUrl}/*` });
                 const consoleTab = tabs.find(t => {
                     try {
                         const tabUrl = new URL(t.url);
@@ -1900,7 +2386,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             } else if (mode === 'duplicate') {
                 // Focus existing tab for this specific resource
-                const tabs = await chrome.tabs.query({ url: `${settings.proxmoxUrl}/*` });
+                const tabs = await chrome.tabs.query({ url: `${clusterUrl}/*` });
                 const existingTab = tabs.find(t => {
                     try {
                         const tabUrl = new URL(t.url);
@@ -1941,7 +2427,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error('[Popup] Failed to open console:', e);
             debugStatus.textContent = `Error: ${e.message}`;
-            const url = api.getConsoleUrl(node, type, vmid, name);
+            const url = targetApi.getConsoleUrl(node, type, vmid, name);
             if (url) {
                 const fallbackTab = await chrome.tabs.create({ url });
                 return { tabId: fallbackTab?.id || null, wasNewTab: true };
@@ -1980,7 +2466,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         } catch (error) {
-            alert(`Failed to get SPICE proxy: ${error.message}`);
+            const message = `Failed to get SPICE proxy: ${error.message}`;
+            debugStatus.style.display = 'block';
+            debugStatus.textContent = message;
+            setInlineSettingsStatus(message, 'error');
         }
     }
 
@@ -2010,7 +2499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return name.includes(query) || vmid.includes(query) || node.includes(query) || 
                    type.includes(query) || ip.includes(query) || tags.includes(query);
         });
-        renderResources(filtered, api);
+        renderResources(filtered);
     }
 
     function renderTagFilters(resources) {

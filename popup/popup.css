@@ -180,6 +180,57 @@ header {
     gap: 8px;
 }
 
+.cluster-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 0 18px 10px 18px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+}
+
+.cluster-tab {
+    border: 1px solid var(--border);
+    background: var(--tag-bg);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    height: 28px;
+    min-width: 0;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.cluster-tab.active {
+    color: var(--text-primary);
+    border-color: var(--brand-prox);
+    box-shadow: inset 0 0 0 1px var(--brand-prox);
+    background: hsla(180, 70%, 50%, 0.11);
+}
+
+.cluster-tab.all-clusters {
+    border-style: dashed;
+}
+
+.cluster-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--success);
+    opacity: 0.9;
+}
+
+.cluster-tab-icon {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.78;
+}
+
 .search-wrapper {
     position: relative;
     flex: 1 1 auto;
@@ -437,6 +488,41 @@ body.settings-view-active #main-view-content {
     color: var(--text-primary);
 }
 
+.inline-settings-subtabs {
+    display: inline-flex;
+    gap: 6px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--tag-bg);
+    margin-bottom: 12px;
+}
+
+.inline-settings-subtab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.inline-settings-subtab-btn.active {
+    color: var(--text-primary);
+    border-color: var(--accent);
+    background: hsla(180, 70%, 50%, 0.12);
+}
+
+.inline-settings-subtab-panel {
+    display: none;
+}
+
+.inline-settings-subtab-panel.active {
+    display: block;
+}
+
 .inline-settings-form-group {
     margin-bottom: 12px;
 }
@@ -461,6 +547,10 @@ body.settings-view-active #main-view-content {
     font-size: 0.84rem;
 }
 
+.inline-settings-form-group input[type="file"] {
+    padding: 6px 8px;
+}
+
 .inline-settings-form-group input:focus,
 .inline-form-control:focus {
     outline: none;
@@ -472,6 +562,19 @@ body.settings-view-active #main-view-content {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
+}
+
+.inline-settings-cluster-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.inline-backup-section {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-top: 4px;
 }
 
 .inline-input-with-icon {
@@ -526,6 +629,10 @@ input.has-clear-control {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
     margin-top: 8px;
+}
+
+.inline-settings-actions.import-only-mode {
+    grid-template-columns: 1fr;
 }
 
 .inline-action-btn {
@@ -806,6 +913,27 @@ input.has-clear-control {
     background-color: var(--brand-mux);
     border-color: var(--brand-mux);
     color: white;
+}
+
+#no-auth {
+    flex-wrap: wrap;
+}
+
+#no-auth .header-alert-actions {
+    margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+#open-import-overlay.compact-btn {
+    border-color: var(--border);
+    color: var(--text-secondary);
+    background: transparent;
+}
+
+#open-import-overlay.compact-btn:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
 }
 
 @keyframes slideDown {
@@ -1366,6 +1494,20 @@ body.light-theme .details-drawer {
     gap: 8px;
     margin-top: 0px;
     line-height: 1.2;
+}
+
+.cluster-resource-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    border: 1px solid var(--border);
+    background: var(--tag-bg);
+    color: var(--brand-mux);
 }
 
 .node {

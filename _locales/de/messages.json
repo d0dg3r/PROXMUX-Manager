@@ -41,6 +41,12 @@
     "resetSettingsCancelled": {
         "message": "Zurücksetzen abgebrochen."
     },
+    "resetSettingsConfirmAgainLabel": {
+        "message": "Zum Zurücksetzen erneut klicken"
+    },
+    "resetSettingsConfirmAgainHint": {
+        "message": "Klicke erneut auf \"Einstellungen zurücksetzen\", um alle Einstellungen zurückzusetzen."
+    },
     "proxmoxUrl": {
         "message": "Proxmox URL"
     },
