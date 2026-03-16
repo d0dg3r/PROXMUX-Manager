@@ -185,7 +185,7 @@ header {
     gap: 8px;
     flex-wrap: wrap;
     align-items: center;
-    padding: 0 18px 10px 18px;
+    padding: 0 18px 8px 18px;
     overflow: visible;
     border-bottom: 1px solid var(--border);
 }
@@ -195,13 +195,13 @@ header {
     background: var(--tag-bg);
     color: var(--text-secondary);
     border-radius: 999px;
-    height: 28px;
+    height: 24px;
     min-width: 0;
-    padding: 0 12px;
+    padding: 0 10px;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
@@ -519,8 +519,8 @@ body.settings-view-active #main-view-content {
     background: transparent;
     color: var(--text-secondary);
     border-radius: 999px;
-    padding: 5px 10px;
-    font-size: 0.76rem;
+    padding: 4px 8px;
+    font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
 }
@@ -546,7 +546,7 @@ body.settings-view-active #main-view-content {
 .inline-settings-form-group label {
     display: block;
     margin-bottom: 6px;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     color: var(--text-secondary);
     font-weight: 600;
 }
@@ -554,7 +554,7 @@ body.settings-view-active #main-view-content {
 .inline-settings-form-group small {
     display: block;
     margin-top: 6px;
-    font-size: 0.72rem;
+    font-size: 0.69rem;
     color: var(--text-secondary);
 }
 
@@ -564,43 +564,46 @@ body.settings-view-active #main-view-content {
     background-color: var(--tag-bg);
     border: 1px solid var(--border);
     color: var(--text-primary);
-    padding: 8px 10px;
+    min-height: 30px;
+    padding: 6px 9px;
     border-radius: 8px;
     box-sizing: border-box;
-    font-size: 0.84rem;
+    font-size: 0.82rem;
+    line-height: 1.2;
 }
 
 .inline-settings-form-group input[type="file"] {
-    padding: 6px 8px;
+    min-height: 30px;
+    padding: 4px 7px;
     cursor: pointer;
 }
 
 .inline-settings-form-group input[type="file"]::file-selector-button {
     margin-right: 10px;
-    min-height: 32px;
-    padding: 0 12px;
+    min-height: 28px;
+    padding: 0 10px;
     border-radius: 20px;
     border: 1px solid var(--border);
     background-color: var(--tag-bg);
     color: var(--text-primary);
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.15;
     cursor: pointer;
     transition: transform 0.16s ease, border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .inline-settings-form-group input[type="file"]::-webkit-file-upload-button {
     margin-right: 10px;
-    min-height: 32px;
-    padding: 0 12px;
+    min-height: 28px;
+    padding: 0 10px;
     border-radius: 20px;
     border: 1px solid var(--border);
     background-color: var(--tag-bg);
     color: var(--text-primary);
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.15;
     cursor: pointer;
     transition: transform 0.16s ease, border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -627,20 +630,20 @@ body.settings-view-active #main-view-content {
 
 textarea.inline-form-control {
     resize: vertical;
-    min-height: 90px;
-    line-height: 1.4;
+    min-height: 74px;
+    line-height: 1.35;
 }
 
 .inline-ssh-overrides-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .inline-ssh-override-row {
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.1fr) auto;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
 }
 
@@ -655,14 +658,14 @@ textarea.inline-form-control {
 .inline-ssh-key-catalog-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     margin-bottom: 8px;
 }
 
 .inline-ssh-key-catalog-row {
     display: grid;
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
 }
 
@@ -773,8 +776,8 @@ textarea.inline-form-control {
     align-items: center;
     border: 1px solid var(--border);
     border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 0.74rem;
+    padding: 3px 9px;
+    font-size: 0.72rem;
     font-weight: 600;
     text-decoration: none;
     color: var(--text-secondary);
@@ -951,12 +954,12 @@ body.settings-view-active [data-inline-settings-panel="about"].active ~ .inline-
 
 .inline-action-btn {
     margin: 0;
-    min-height: 34px;
-    padding: 6px 12px;
+    min-height: 30px;
+    padding: 5px 10px;
     border-radius: 10px;
-    font-size: 0.83rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    line-height: 1.2;
+    line-height: 1.15;
     letter-spacing: 0.01em;
     cursor: pointer;
     transition: transform 0.16s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
@@ -1009,7 +1012,7 @@ body.settings-view-active [data-inline-settings-panel="about"].active ~ .inline-
 /* Keep vertical separation for extras add-buttons after base action button reset. */
 .inline-action-btn.inline-ssh-override-add-btn,
 .inline-action-btn.inline-ssh-key-catalog-add-btn {
-    margin-top: 6px;
+    margin-top: 4px;
 }
 
 .inline-settings-status {
@@ -1128,13 +1131,13 @@ body.settings-view-active [data-inline-settings-panel="about"].active ~ .inline-
     background-color: var(--tag-bg);
     border: 1px solid var(--border);
     color: var(--text-secondary);
-    min-height: 28px;
-    padding: 0 11px;
+    min-height: 24px;
+    padding: 0 9px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 20px;
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     cursor: pointer;
     transition: all 0.2s ease;
     font-weight: 700;

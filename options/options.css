@@ -160,10 +160,12 @@ h1.branded-title .title-suffix {
     background-color: var(--tag-bg);
     border: 1px solid var(--border);
     color: var(--text-primary);
-    padding: 10px 12px;
+    min-height: 32px;
+    padding: 7px 11px;
     border-radius: 8px;
     box-sizing: border-box;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
+    line-height: 1.2;
     transition: all 0.3s ease;
 }
 
@@ -175,7 +177,7 @@ h1.branded-title .title-suffix {
 
 .form-group small {
     display: block;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: var(--text-secondary);
     margin-top: 8px;
     opacity: 0.8;
@@ -202,8 +204,8 @@ h1.branded-title .title-suffix {
     background: transparent;
     color: var(--text-secondary);
     border-radius: 999px;
-    padding: 6px 12px;
-    font-size: 0.82rem;
+    padding: 4px 10px;
+    font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
 }
@@ -317,13 +319,13 @@ input.has-clear-control {
     background-image: var(--brand-mux-gradient);
     color: white;
     border: 1px solid transparent;
-    min-height: 36px;
-    padding: 8px 12px;
+    min-height: 32px;
+    padding: 6px 11px;
     border-radius: 10px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.89rem;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.15;
     transition: all 0.2s ease;
     margin-top: 10px;
     box-shadow: 0 4px 14px hsla(25, 80%, 50%, 0.3);
@@ -361,8 +363,8 @@ input.has-clear-control {
     border: 1px solid transparent;
     border-bottom: none;
     color: var(--text-secondary);
-    padding: 8px 16px;
-    font-size: 0.95rem;
+    padding: 6px 14px;
+    font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
     border-top-left-radius: 6px;
@@ -407,13 +409,13 @@ input.has-clear-control {
     background-color: var(--hover-bg);
     color: var(--text-primary);
     border: 1px solid var(--text-secondary);
-    min-height: 36px;
-    padding: 8px 12px;
+    min-height: 32px;
+    padding: 6px 11px;
     border-radius: 10px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.86rem;
     font-weight: 600;
-    line-height: 1.2;
+    line-height: 1.15;
     transition: all 0.2s;
     margin-top: 10px;
 }
@@ -428,13 +430,13 @@ input.has-clear-control {
     background-color: hsla(0, 74%, 55%, 0.16);
     color: var(--error);
     border: 1px solid hsla(0, 70%, 55%, 0.5);
-    min-height: 36px;
-    padding: 8px 12px;
+    min-height: 32px;
+    padding: 6px 11px;
     border-radius: 10px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.86rem;
     font-weight: 600;
-    line-height: 1.2;
+    line-height: 1.15;
     transition: all 0.2s;
     margin-top: 10px;
 }
@@ -592,17 +594,19 @@ input.has-clear-control {
     background-color: var(--tag-bg);
     border: 1px solid var(--border);
     color: var(--text-primary);
-    padding: 10px 12px;
+    min-height: 32px;
+    padding: 7px 11px;
     border-radius: 8px;
     box-sizing: border-box;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
+    line-height: 1.2;
     cursor: pointer;
 }
 
 textarea.form-control {
     cursor: text;
     resize: vertical;
-    min-height: 110px;
+    min-height: 92px;
     line-height: 1.45;
 }
 
@@ -615,7 +619,7 @@ textarea.form-control {
 .ssh-override-row {
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.1fr) auto;
-    gap: 10px;
+    gap: 8px;
     align-items: center;
 }
 
@@ -625,7 +629,7 @@ textarea.form-control {
 
 .ssh-override-remove-btn {
     width: auto;
-    min-width: 86px;
+    min-width: 78px;
 }
 
 .ssh-override-add-btn {
@@ -644,7 +648,7 @@ textarea.form-control {
 .ssh-key-catalog-row {
     display: grid;
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr) auto;
-    gap: 10px;
+    gap: 8px;
     align-items: center;
 }
 
