@@ -1959,6 +1959,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const itemMain = clone.querySelector('.item-main');
             const indicator = clone.querySelector('.status-indicator');
             const nameEl = clone.querySelector('.name');
+            const subtitleEl = clone.querySelector('.resource-subtitle');
             const typeNodeEl = clone.querySelector('.type-node');
             const nodeIdEl = clone.querySelector('.node-id');
             const uptimeEl = clone.querySelector('.uptime');
@@ -1981,15 +1982,36 @@ document.addEventListener('DOMContentLoaded', async () => {
             const diskRow = clone.querySelector('#disk-row');
 
             nameEl.textContent = res.name || res.vmid || res.node;
-            typeNodeEl.textContent = `${res.type.toUpperCase()} @ ${res.node}`;
+            typeNodeEl.textContent = res.type.toUpperCase();
+            typeNodeEl.classList.add('subtitle-chip', 'subtitle-type');
+            typeNodeEl.classList.add(`subtitle-type-${res.type}`);
+
+            const showNodeChip = res.type !== 'node';
+            let nodeChipEl = null;
+            if (showNodeChip) {
+                nodeChipEl = document.createElement('span');
+                nodeChipEl.className = 'subtitle-chip subtitle-node';
+                nodeChipEl.textContent = res.node;
+                subtitleEl?.insertBefore(nodeChipEl, nodeIdEl);
+            }
+
             if (activeClusterTabId === ALL_CLUSTERS_TAB_ID && res.__clusterName) {
                 const clusterBadge = document.createElement('span');
                 clusterBadge.className = 'cluster-resource-badge';
                 clusterBadge.textContent = res.__clusterName;
-                typeNodeEl.appendChild(clusterBadge);
+                if (nodeChipEl) {
+                    nodeChipEl.appendChild(clusterBadge);
+                } else {
+                    typeNodeEl.appendChild(clusterBadge);
+                }
             }
-            if (res.vmid) {
-                nodeIdEl.textContent = `(ID ${res.vmid})`;
+            if ((res.type === 'qemu' || res.type === 'lxc') && res.vmid) {
+                nodeIdEl.textContent = `ID ${res.vmid}`;
+                nodeIdEl.classList.add('subtitle-chip', 'subtitle-vmid');
+                nodeIdEl.classList.remove('hidden');
+            } else {
+                nodeIdEl.textContent = '';
+                nodeIdEl.classList.add('hidden');
             }
 
             if (res.uptime && (res.status === 'running' || res.status === 'online')) {

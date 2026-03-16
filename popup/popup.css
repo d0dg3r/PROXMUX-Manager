@@ -1764,9 +1764,53 @@ body.light-theme .details-drawer {
 .resource-subtitle {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 0px;
+    gap: 6px;
+    margin-top: 2px;
     line-height: 1.2;
+    flex-wrap: wrap;
+}
+
+.subtitle-chip {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background-color: var(--tag-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.subtitle-type {
+    color: var(--accent);
+    background-color: hsla(190, 80%, 40%, 0.1);
+    border-color: hsla(190, 80%, 40%, 0.3);
+}
+
+.subtitle-type-node {
+    color: var(--success);
+    background-color: hsla(140, 60%, 45%, 0.12);
+    border-color: hsla(140, 60%, 45%, 0.35);
+}
+
+.subtitle-type-qemu {
+    color: var(--brand-prox);
+    background-color: hsla(180, 70%, 50%, 0.12);
+    border-color: hsla(180, 70%, 50%, 0.32);
+}
+
+.subtitle-type-lxc {
+    color: var(--brand-mux);
+    background-color: hsla(25, 80%, 50%, 0.12);
+    border-color: hsla(25, 80%, 50%, 0.32);
+}
+
+.subtitle-node {
+    color: var(--text-primary);
+}
+
+.subtitle-vmid {
+    font-variant-numeric: tabular-nums;
 }
 
 .cluster-resource-badge {
