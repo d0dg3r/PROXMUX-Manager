@@ -411,7 +411,7 @@
         "message": "SSH shells need a detected IP; for VMs ensure QEMU Guest Agent is enabled and installed."
     },
     "popupHelpSshExport": {
-        "message": "SSH Config Export is in the Extras tab and supports global user defaults, per-host user overrides, and OpenSSH directive defaults."
+        "message": "SSH Config Export is in the Extras tab and supports key catalog selection, global user/key defaults, per-host user/key overrides, and OpenSSH directive defaults."
     },
     "sshConfigExportTitle": {
         "message": "SSH Config Export"
@@ -422,11 +422,35 @@
     "sshDefaultUserHelp": {
         "message": "Used when no per-host override is configured."
     },
+    "sshDefaultKeyPathLabel": {
+        "message": "Default SSH key path (optional)"
+    },
+    "sshDefaultKeyPathHelp": {
+        "message": "Select a key from the catalog. Used as IdentityFile in Host * when no IdentityFile exists in SSH host defaults."
+    },
     "sshUserOverridesLabel": {
         "message": "Per-host user overrides"
     },
     "sshUserOverridesHelp": {
         "message": "One mapping per line: alias: username (or alias=username)."
+    },
+    "sshHostOverridesLabel": {
+        "message": "Per-host overrides"
+    },
+    "sshHostOverridesHelp": {
+        "message": "Choose host alias and optionally override user and SSH key from the catalog."
+    },
+    "sshAddOverrideBtn": {
+        "message": "Add Override"
+    },
+    "sshKeyCatalogLabel": {
+        "message": "SSH key catalog"
+    },
+    "sshKeyCatalogHelp": {
+        "message": "Manage custom key entries. Auto-detected common keys are added automatically."
+    },
+    "sshAddKeyBtn": {
+        "message": "Add SSH Key"
     },
     "sshHostDefaultsLabel": {
         "message": "SSH host defaults (OpenSSH directives)"

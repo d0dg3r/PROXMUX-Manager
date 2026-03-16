@@ -577,30 +577,30 @@ body.settings-view-active #main-view-content {
 
 .inline-settings-form-group input[type="file"]::file-selector-button {
     margin-right: 10px;
-    min-height: 28px;
-    padding: 0 11px;
+    min-height: 32px;
+    padding: 0 12px;
     border-radius: 20px;
     border: 1px solid var(--border);
     background-color: var(--tag-bg);
     color: var(--text-primary);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 700;
-    line-height: 1;
+    line-height: 1.2;
     cursor: pointer;
     transition: transform 0.16s ease, border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .inline-settings-form-group input[type="file"]::-webkit-file-upload-button {
     margin-right: 10px;
-    min-height: 28px;
-    padding: 0 11px;
+    min-height: 32px;
+    padding: 0 12px;
     border-radius: 20px;
     border: 1px solid var(--border);
     background-color: var(--tag-bg);
     color: var(--text-primary);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 700;
-    line-height: 1;
+    line-height: 1.2;
     cursor: pointer;
     transition: transform 0.16s ease, border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -629,6 +629,45 @@ textarea.inline-form-control {
     resize: vertical;
     min-height: 90px;
     line-height: 1.4;
+}
+
+.inline-ssh-overrides-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.inline-ssh-override-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.inline-ssh-override-row .inline-action-btn {
+    min-height: 34px;
+}
+
+.inline-ssh-override-add-btn {
+    margin-top: 6px;
+}
+
+.inline-ssh-key-catalog-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.inline-ssh-key-catalog-row {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.inline-ssh-key-catalog-add-btn {
+    margin-top: 6px;
 }
 
 .inline-settings-form-row {
@@ -912,10 +951,12 @@ body.settings-view-active [data-inline-settings-panel="about"].active ~ .inline-
 
 .inline-action-btn {
     margin: 0;
-    min-height: 36px;
+    min-height: 34px;
+    padding: 6px 12px;
     border-radius: 10px;
     font-size: 0.83rem;
     font-weight: 600;
+    line-height: 1.2;
     letter-spacing: 0.01em;
     cursor: pointer;
     transition: transform 0.16s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
@@ -963,6 +1004,12 @@ body.settings-view-active [data-inline-settings-panel="about"].active ~ .inline-
     border-color: hsla(355, 78%, 64%, 0.92);
     background-color: hsla(355, 50%, 24%, 0.4);
     box-shadow: 0 4px 12px hsla(355, 82%, 45%, 0.22);
+}
+
+/* Keep vertical separation for extras add-buttons after base action button reset. */
+.inline-action-btn.inline-ssh-override-add-btn,
+.inline-action-btn.inline-ssh-key-catalog-add-btn {
+    margin-top: 6px;
 }
 
 .inline-settings-status {

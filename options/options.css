@@ -317,11 +317,13 @@ input.has-clear-control {
     background-image: var(--brand-mux-gradient);
     color: white;
     border: 1px solid transparent;
-    padding: 10px 12px;
+    min-height: 36px;
+    padding: 8px 12px;
     border-radius: 10px;
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 700;
+    line-height: 1.2;
     transition: all 0.2s ease;
     margin-top: 10px;
     box-shadow: 0 4px 14px hsla(25, 80%, 50%, 0.3);
@@ -405,11 +407,13 @@ input.has-clear-control {
     background-color: var(--hover-bg);
     color: var(--text-primary);
     border: 1px solid var(--text-secondary);
-    padding: 10px 12px;
+    min-height: 36px;
+    padding: 8px 12px;
     border-radius: 10px;
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 600;
+    line-height: 1.2;
     transition: all 0.2s;
     margin-top: 10px;
 }
@@ -424,11 +428,13 @@ input.has-clear-control {
     background-color: hsla(0, 74%, 55%, 0.16);
     color: var(--error);
     border: 1px solid hsla(0, 70%, 55%, 0.5);
-    padding: 10px 12px;
+    min-height: 36px;
+    padding: 8px 12px;
     border-radius: 10px;
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 600;
+    line-height: 1.2;
     transition: all 0.2s;
     margin-top: 10px;
 }
@@ -598,5 +604,56 @@ textarea.form-control {
     resize: vertical;
     min-height: 110px;
     line-height: 1.45;
+}
+
+.ssh-overrides-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ssh-override-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.1fr) auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.ssh-override-row .secondary-btn {
+    margin-top: 0;
+}
+
+.ssh-override-remove-btn {
+    width: auto;
+    min-width: 86px;
+}
+
+.ssh-override-add-btn {
+    width: auto;
+    max-width: 220px;
+    margin-top: 6px;
+}
+
+.ssh-key-catalog-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.ssh-key-catalog-row {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr) auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.ssh-key-catalog-add-btn,
+.ssh-key-catalog-remove-btn {
+    width: auto;
+}
+
+.ssh-key-catalog-add-btn {
+    margin-top: 6px;
 }
 

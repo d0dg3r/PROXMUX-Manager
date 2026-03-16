@@ -13,8 +13,10 @@ const mod = await import(moduleUrl);
 
 const {
   buildSshAlias,
+  buildMergedSshKeyCatalog,
   buildSshConfigText,
   collectSshExportTargets,
+  findSshKeyIdByPath,
   parseSshHostDefaultsText,
   parseSshUserOverridesText,
   stringifySshHostDefaults,
@@ -105,6 +107,91 @@ test('emits host defaults in Host * block and keeps host blocks minimal', async 
   expect(config).toContain('  HostName 10.0.0.10');
   expect(config).not.toContain('Host web-01\n  HostName 10.0.0.10\n  User ubuntu');
   expect(config).not.toContain('Host web-01\n  HostName 10.0.0.10\n  Port 2222');
+});
+
+test('writes default key path when Host * has no IdentityFile', async () => {
+  const config = buildSshConfigText(
+    [{ alias: 'web-01', ip: '10.0.0.10' }],
+    {
+      defaultKeyPath: '~/.ssh/id_default',
+      hostDefaults: {
+        Port: '22'
+      }
+    }
+  );
+
+  expect(config).toContain('Host *');
+  expect(config).toContain('  Port 22');
+  expect(config).toContain('  IdentityFile ~/.ssh/id_default');
+});
+
+test('does not inject default key path when Host * already defines IdentityFile', async () => {
+  const config = buildSshConfigText(
+    [{ alias: 'web-01', ip: '10.0.0.10' }],
+    {
+      defaultKeyPath: '~/.ssh/id_default',
+      hostDefaults: {
+        IdentityFile: '~/.ssh/id_from_defaults'
+      }
+    }
+  );
+
+  expect(config).toContain('  IdentityFile ~/.ssh/id_from_defaults');
+  expect(config).not.toContain('  IdentityFile ~/.ssh/id_default');
+});
+
+test('applies per-host key and user overrides', async () => {
+  const config = buildSshConfigText(
+    [{ alias: 'web-01', ip: '10.0.0.10' }, { alias: 'db-01', ip: '10.0.0.11' }],
+    {
+      defaultUser: 'root',
+      defaultKeyPath: '~/.ssh/id_default',
+      hostOverrides: {
+        'web-01': { user: 'ubuntu', keyPath: '~/.ssh/id_web' },
+        'db-01': { keyPath: '~/.ssh/id_db' }
+      }
+    }
+  );
+
+  expect(config).toContain('Host web-01\n  HostName 10.0.0.10\n  User ubuntu\n  IdentityFile ~/.ssh/id_web');
+  expect(config).toContain('Host db-01\n  HostName 10.0.0.11\n  IdentityFile ~/.ssh/id_db');
+  expect(config).toContain('Host *\n  User root\n  IdentityFile ~/.ssh/id_default');
+});
+
+test('merges detected and manual key catalogs with path dedupe', async () => {
+  const merged = buildMergedSshKeyCatalog([
+    { id: 'manual-1', label: 'Primary', path: '~/.ssh/id_ed25519' },
+    { id: 'manual-2', label: 'Deploy', path: '~/.ssh/id_deploy' }
+  ]);
+  const ed25519 = merged.filter((entry) => entry.path === '~/.ssh/id_ed25519');
+  expect(ed25519).toHaveLength(1);
+  expect(ed25519[0].source).toBe('manual');
+  expect(merged.some((entry) => entry.path === '~/.ssh/id_deploy')).toBeTruthy();
+});
+
+test('resolves selected key ids to IdentityFile paths', async () => {
+  const keyCatalog = [
+    { id: 'key-default', label: 'Default', path: '~/.ssh/id_default' },
+    { id: 'key-web', label: 'Web', path: '~/.ssh/id_web' }
+  ];
+  const config = buildSshConfigText(
+    [{ alias: 'web-01', ip: '10.0.0.10' }],
+    {
+      keyCatalog,
+      selectedDefaultKeyId: 'key-default',
+      hostOverrides: {
+        'web-01': { keyId: 'key-web' }
+      }
+    }
+  );
+  expect(config).toContain('Host *\n  IdentityFile ~/.ssh/id_default');
+  expect(config).toContain('Host web-01\n  HostName 10.0.0.10\n  IdentityFile ~/.ssh/id_web');
+});
+
+test('maps legacy key paths to catalog ids', async () => {
+  const catalog = buildMergedSshKeyCatalog([], ['~/.ssh/legacy_key']);
+  const keyId = findSshKeyIdByPath(catalog, '~/.ssh/legacy_key');
+  expect(keyId).toBeTruthy();
 });
 
 test('collects only Linux-capable resources with IP addresses', async () => {

@@ -309,9 +309,23 @@
                 </div>
 
                 <div class="inline-settings-form-group">
-                    <label for="inline-ssh-user-overrides" data-i18n="sshUserOverridesLabel">Per-host user overrides</label>
-                    <textarea id="inline-ssh-user-overrides" class="inline-form-control" rows="4" placeholder="web-01: ubuntu&#10;pve01: root"></textarea>
-                    <small data-i18n="sshUserOverridesHelp">One mapping per line: alias: username (or alias=username).</small>
+                    <label for="inline-ssh-default-key-select" data-i18n="sshDefaultKeyPathLabel">Default SSH key path (optional)</label>
+                    <select id="inline-ssh-default-key-select" class="inline-form-control"></select>
+                    <small data-i18n="sshDefaultKeyPathHelp">Used as IdentityFile in Host * when no IdentityFile exists in SSH host defaults.</small>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label data-i18n="sshHostOverridesLabel">Per-host overrides</label>
+                    <div id="inline-ssh-host-overrides-list" class="inline-ssh-overrides-list"></div>
+                    <button id="inline-add-ssh-host-override-btn" type="button" class="inline-action-btn secondary inline-ssh-override-add-btn" data-i18n="sshAddOverrideBtn">Add Override</button>
+                    <small data-i18n="sshHostOverridesHelp">Choose host alias and optionally override user and SSH key path.</small>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label data-i18n="sshKeyCatalogLabel">SSH key catalog</label>
+                    <div id="inline-ssh-key-catalog-list" class="inline-ssh-key-catalog-list"></div>
+                    <button id="inline-add-ssh-key-catalog-btn" type="button" class="inline-action-btn secondary inline-ssh-key-catalog-add-btn" data-i18n="sshAddKeyBtn">Add SSH Key</button>
+                    <small data-i18n="sshKeyCatalogHelp">Manage custom key entries. Auto-detected common keys are added automatically.</small>
                 </div>
 
                 <div class="inline-settings-form-group">

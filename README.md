@@ -70,9 +70,12 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
 
 - Open **Settings** and switch to the **Extras** tab.
 - Set an optional global **Default SSH user** (for example `root` or `ubuntu`).
-- Add optional per-host overrides (`alias: username`) when specific machines require a different user.
+- Maintain a custom **SSH key catalog** (`label + path`); common `~/.ssh` key paths are auto-added to the dropdowns.
+- Select an optional global **Default SSH key** from the dropdown.
+- Add one or more per-host overrides using the row editor (`Host alias` + optional `User` + optional `SSH key` from dropdown).
 - Define shared host defaults with OpenSSH directives (for example `Port 22`, `IdentityFile ~/.ssh/id_ed25519`, `ProxyJump bastion.example.com`).
 - Use **Download SSH Config** or **Copy SSH Config** to export all detected Linux hosts with IP addresses.
+- If `IdentityFile` is already set in SSH host defaults, it stays the primary default and the selected default key is ignored.
 - Exported `Host` aliases use the visible machine names in lowercase; only collisions get a cluster suffix.
 - Add the output to your `~/.ssh/config`.
 

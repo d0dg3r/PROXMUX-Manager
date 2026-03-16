@@ -195,9 +195,23 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="ssh-user-overrides" data-i18n="sshUserOverridesLabel">Per-host user overrides</label>
-                    <textarea id="ssh-user-overrides" class="form-control" rows="5" placeholder="web-01: ubuntu&#10;pve01: root"></textarea>
-                    <small data-i18n="sshUserOverridesHelp">One mapping per line: alias: username (or alias=username).</small>
+                    <label for="ssh-default-key-select" data-i18n="sshDefaultKeyPathLabel">Default SSH key path (optional)</label>
+                    <select id="ssh-default-key-select" class="form-control"></select>
+                    <small data-i18n="sshDefaultKeyPathHelp">Used as IdentityFile in Host * when no IdentityFile exists in SSH host defaults.</small>
+                </div>
+
+                <div class="form-group">
+                    <label data-i18n="sshHostOverridesLabel">Per-host overrides</label>
+                    <div id="ssh-host-overrides-list" class="ssh-overrides-list"></div>
+                    <button id="add-ssh-host-override-btn" type="button" class="secondary-btn ssh-override-add-btn" data-i18n="sshAddOverrideBtn">Add Override</button>
+                    <small data-i18n="sshHostOverridesHelp">Choose host alias and optionally override user and SSH key path.</small>
+                </div>
+
+                <div class="form-group">
+                    <label data-i18n="sshKeyCatalogLabel">SSH key catalog</label>
+                    <div id="ssh-key-catalog-list" class="ssh-key-catalog-list"></div>
+                    <button id="add-ssh-key-catalog-btn" type="button" class="secondary-btn ssh-key-catalog-add-btn" data-i18n="sshAddKeyBtn">Add SSH Key</button>
+                    <small data-i18n="sshKeyCatalogHelp">Manage custom key entries. Auto-detected common keys are added automatically.</small>
                 </div>
 
                 <div class="form-group">
@@ -228,7 +242,7 @@
                     <h4>SSH Shells</h4>
                     <p>The Shell icon appears for Linux-based VMs and LXC containers when a valid IP address is detected. It uses the <code>ssh://</code> protocol. Ensure your OS has a default handler for SSH links.</p>
                     <p><strong>Pro Tip:</strong> For VMs, make sure the <strong>QEMU Guest Agent</strong> is enabled in Proxmox and installed in the VM, otherwise the extension cannot detect the IP address.</p>
-                    <p><strong>SSH Config Export:</strong> In Settings, open the <strong>Extras</strong> tab to build OpenSSH host entries for all Linux hosts. Per-host user overrides take precedence over the global default user.</p>
+                    <p><strong>SSH Config Export:</strong> In Settings, open the <strong>Extras</strong> tab to build OpenSSH host entries for all Linux hosts. Per-host user/key overrides take precedence over global defaults.</p>
                 </div>
 
                 <div class="help-item">

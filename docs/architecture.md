@@ -128,9 +128,12 @@ The popup top-bar search pipeline is designed for fast iterative filtering:
 3. For each cluster, extension fetches `/cluster/resources` and resolves host details (IP + OS hints).
 4. Linux-capable resources (nodes, LXCs, Linux VMs) are normalized into lowercase aliases based on visible list names.
 5. If duplicate aliases occur, a cluster suffix is appended only for colliding entries.
-6. User mapping precedence is applied: per-host override first, then global default user.
-7. Shared OpenSSH directive defaults are emitted once in a top `Host *` block.
-8. Extension generates minimal per-host OpenSSH blocks and outputs them via download or clipboard.
+6. Key selection uses a merged catalog: auto-detected common `~/.ssh` keys + manually stored key entries (`id`, `label`, `path`) with path dedupe.
+7. User and key mapping precedence is applied: per-host override first, then global defaults.
+8. Selected key IDs are resolved to concrete `IdentityFile` paths before writing config output.
+9. Shared OpenSSH directive defaults are emitted once in a top `Host *` block.
+10. Global default selected key is emitted as `IdentityFile` only when host defaults do not already define `IdentityFile`.
+11. Extension generates minimal per-host OpenSSH blocks and outputs them via download or clipboard.
 
 ## 5. Security Model
 - **Token Security**: API Tokens are stored locally in the browser's profile and are never transmitted to any third-party.
