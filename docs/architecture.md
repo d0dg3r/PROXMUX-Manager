@@ -34,8 +34,10 @@ The heart of the extension. It encapsulates all communication with the Proxmox V
 The extension uses a shared UI for Side Panel and Floating Window contexts.
 - **`popup.html`**: Defines the searchable resource list and filter system.
 - **`popup.js`**: Handles state management, filtering, inline settings view toggling, and event delegation. It interacts with `ProxmoxAPI` to fetch data and launch consoles.
+- **Adaptive Density Controls**: Global `uiScale` is applied as a CSS variable and synchronized live across popup/sidepanel/options via storage events.
 - **Multi-Cluster Tabs**: Supports per-cluster context tabs plus an `All Clusters` aggregation mode, including scoped UI state persistence.
 - **No-Config Guided Entry**: Provides direct CTA routing to either `Cluster` configuration or `Backup & Restore` import-first onboarding.
+- **Status + Metrics Readability**: Resource status indicators/filters and stat-row value alignment are tuned for consistent visual scanning in dense lists.
 - **i18n**: Fully localized using `chrome.i18n` for English and German.
 
 ### 3.3 Action Routing Layer (`background.js`, `lib/window-launcher.js`)
@@ -48,7 +50,8 @@ Uses `chrome.storage.local` to store:
 - API Credentials legacy fallback keys (kept synchronized for compatibility).
 - Failover Node URLs (discovered dynamically).
 - User preferences (theme, display settings, toolbar click mode).
-- SSH export preferences (global default SSH user, per-host user override map, and shared host defaults).
+- Global UI scale (`uiScale`) for unified sizing across all extension surfaces.
+- SSH export preferences (global defaults, key catalog, per-host overrides, shared host defaults, selected export format).
 - Community Scripts catalog/details cache and cache TTL settings.
 
 Uses `localStorage` for popup session UX state:
@@ -133,7 +136,8 @@ The popup top-bar search pipeline is designed for fast iterative filtering:
 8. Selected key IDs are resolved to concrete `IdentityFile` paths before writing config output.
 9. Shared OpenSSH directive defaults are emitted once in a top `Host *` block.
 10. Global default selected key is emitted as `IdentityFile` only when host defaults do not already define `IdentityFile`.
-11. Extension generates minimal per-host OpenSSH blocks and outputs them via download or clipboard.
+11. User-selected export format routes output generation to OpenSSH config, PuTTY `.reg`, or CSV host list.
+12. Extension returns format-specific filename and MIME type for download/copy actions.
 
 ## 5. Security Model
 - **Token Security**: API Tokens are stored locally in the browser's profile and are never transmitted to any third-party.

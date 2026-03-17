@@ -234,10 +234,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const pendingStatusOverrides = new Map();
     const tagFiltersContainer = document.getElementById('tag-filters');
     const tagFiltersSection = tagFiltersContainer?.closest('.filter-section-tags');
+    const DEFAULT_TYPE_FILTERS = ['node', 'qemu', 'lxc'];
+    const DEFAULT_STATUS_FILTERS = ['running', 'stopped'];
     let activeFilters = {
-        type: 'all', // 'all', 'node', 'qemu', 'lxc'
-        status: 'all', // 'all', 'running', 'stopped'
-        tag: null // 'null' or string
+        types: [...DEFAULT_TYPE_FILTERS],
+        statuses: [...DEFAULT_STATUS_FILTERS],
+        tag: null
     };
     const searchInput = document.getElementById('search-input');
     const searchClearBtn = document.getElementById('search-clear-btn');
@@ -264,6 +266,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     const scriptsGuideClose = document.getElementById('scripts-guide-close');
     const scriptsGuideOpenPage = document.getElementById('scripts-guide-open-page');
     const debugStatus = document.getElementById('debug-status');
+
+    function normalizeActiveFilters(input) {
+        const fallback = {
+            types: [...DEFAULT_TYPE_FILTERS],
+            statuses: [...DEFAULT_STATUS_FILTERS],
+            tag: null
+        };
+        if (!input || typeof input !== 'object') return fallback;
+
+        const allowedTypes = new Set(DEFAULT_TYPE_FILTERS);
+        const allowedStatuses = new Set(DEFAULT_STATUS_FILTERS);
+
+        let types = Array.isArray(input.types) ? input.types : null;
+        let statuses = Array.isArray(input.statuses) ? input.statuses : null;
+
+        // Backward compatibility for legacy single-value shape.
+        if (!types && typeof input.type === 'string') {
+            types = input.type === 'all' ? [...DEFAULT_TYPE_FILTERS] : [input.type];
+        }
+        if (!statuses && typeof input.status === 'string') {
+            statuses = input.status === 'all' ? [...DEFAULT_STATUS_FILTERS] : [input.status];
+        }
+
+        const normalizedTypes = (types || [...DEFAULT_TYPE_FILTERS]).filter((value, idx, arr) =>
+            allowedTypes.has(value) && arr.indexOf(value) === idx
+        );
+        const normalizedStatuses = (statuses || [...DEFAULT_STATUS_FILTERS]).filter((value, idx, arr) =>
+            allowedStatuses.has(value) && arr.indexOf(value) === idx
+        );
+
+        return {
+            types: normalizedTypes,
+            statuses: normalizedStatuses,
+            tag: typeof input.tag === 'string' && input.tag.trim() ? input.tag : null
+        };
+    }
+
+    function syncFilterPillsFromState() {
+        filterPills.forEach((pill) => {
+            const type = pill.getAttribute('data-filter-type');
+            const status = pill.getAttribute('data-filter-status');
+            if (type) {
+                pill.classList.toggle('active', activeFilters.types.includes(type));
+                return;
+            }
+            if (status) {
+                pill.classList.toggle('active', activeFilters.statuses.includes(status));
+            }
+        });
+    }
 
 
     let displaySettings = {
@@ -1033,31 +1085,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             const status = pill.getAttribute('data-filter-status');
 
             if (type) {
-                // If clicking type, clear existing type indicators
-                filterPills.forEach(p => {
-                    if (p.hasAttribute('data-filter-type')) p.classList.remove('active');
-                });
-                activeFilters.type = type;
-            } else if (status) {
-                // Toggle status filter if clicking same status, otherwise switch
-                if (activeFilters.status === status) {
-                    activeFilters.status = 'all';
-                    pill.classList.remove('active');
+                if (activeFilters.types.includes(type)) {
+                    activeFilters.types = activeFilters.types.filter((value) => value !== type);
                 } else {
-                    filterPills.forEach(p => {
-                        if (p.hasAttribute('data-filter-status')) p.classList.remove('active');
-                    });
-                    activeFilters.status = status;
+                    activeFilters.types = [...activeFilters.types, type];
+                }
+            } else if (status) {
+                if (activeFilters.statuses.includes(status)) {
+                    activeFilters.statuses = activeFilters.statuses.filter((value) => value !== status);
+                } else {
+                    activeFilters.statuses = [...activeFilters.statuses, status];
                 }
             }
 
-            // Always ensure the correct type pill is active
-            if (type) pill.classList.add('active');
-            else {
-                // If toggled status, ensure status pill is active if not 'all'
-                if (activeFilters.status !== 'all') pill.classList.add('active');
-            }
-
+            syncFilterPillsFromState();
             writeScopedUiValue('lastFilters', JSON.stringify(activeFilters));
             filterAndRender();
         });
@@ -1191,13 +1232,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         await chrome.storage.local.set({ uiScale: normalized });
     });
 
-    chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== 'local') return;
-        if (!Object.prototype.hasOwnProperty.call(changes, 'uiScale')) return;
-        const nextScale = changes.uiScale?.newValue;
-        const normalized = syncInlineUiScaleControls(nextScale ?? DEFAULT_SETTINGS.uiScale);
-        settings = { ...settings, uiScale: normalized };
-    });
+    if (chrome?.storage?.onChanged?.addListener) {
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName !== 'local') return;
+            if (!Object.prototype.hasOwnProperty.call(changes, 'uiScale')) return;
+            const nextScale = changes.uiScale?.newValue;
+            const normalized = syncInlineUiScaleControls(nextScale ?? DEFAULT_SETTINGS.uiScale);
+            settings = { ...settings, uiScale: normalized };
+        });
+    }
 
     inlineSettingsSubtabButtons.forEach((button) => {
         button.addEventListener('click', () => {
@@ -1710,7 +1753,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         displaySettings = { ...FACTORY_DEFAULT_DISPLAY_SETTINGS };
         expandDetailsByDefault = Boolean(resetResult.storagePayload.expandDetailsByDefault);
         favoriteResourceIds = new Set(resetResult.storagePayload.favoriteResourceIds || []);
-        activeFilters = { type: 'all', status: 'all', tag: null };
+        activeFilters = {
+            types: [...DEFAULT_TYPE_FILTERS],
+            statuses: [...DEFAULT_STATUS_FILTERS],
+            tag: null
+        };
         currentExpandedId = null;
         allResources = [];
         resourcesByClusterId.clear();
@@ -1720,15 +1767,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         searchInput.value = '';
         updateSearchClearState();
-        filterPills.forEach((pill) => {
-            const filterType = pill.getAttribute('data-filter-type');
-            const filterStatus = pill.getAttribute('data-filter-status');
-            if (!filterType && !filterStatus) return;
-            pill.classList.remove('active');
-            if (filterType === 'all') {
-                pill.classList.add('active');
-            }
-        });
+        syncFilterPillsFromState();
 
         syncDisplaySettingsCheckboxes();
         applyDisplaySettings();
@@ -2305,19 +2344,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const savedFilters = readScopedUiValue('lastFilters', '');
         if (savedFilters) {
             try {
-                activeFilters = JSON.parse(savedFilters);
+                activeFilters = normalizeActiveFilters(JSON.parse(savedFilters));
             } catch (_error) {
-                activeFilters = { type: 'all', status: 'all', tag: null };
+                activeFilters = normalizeActiveFilters(null);
             }
         } else {
-            activeFilters = { type: 'all', status: 'all', tag: null };
+            activeFilters = normalizeActiveFilters(null);
         }
-        filterPills.forEach((pill) => pill.classList.remove('active'));
-        document.querySelector('.filter-pill[data-filter-type="all"]')?.classList.add('active');
-        document.querySelector(`.filter-pill[data-filter-type="${activeFilters.type}"]`)?.classList.add('active');
-        if (activeFilters.status && activeFilters.status !== 'all') {
-            document.querySelector(`.filter-pill[data-filter-status="${activeFilters.status}"]`)?.classList.add('active');
-        }
+        syncFilterPillsFromState();
         renderClusterTabs();
         await persistClusterContext();
         await fetchAndRender(true);
@@ -3465,11 +3499,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const filtered = allResources.filter(res => {
             if (activeClusterTabId === FAVORITES_TAB_ID && !isFavoriteResource(res)) return false;
-            // 1. Type filter
-            if (activeFilters.type !== 'all' && res.type !== activeFilters.type) return false;
 
-            // 2. Status filter
-            if (activeFilters.status !== 'all' && res.status !== activeFilters.status) return false;
+            // 1. Type filter (OR within enabled types)
+            if (!activeFilters.types.length || !activeFilters.types.includes(res.type)) {
+                return false;
+            }
+
+            // 2. Status filter (OR within enabled statuses)
+            const normalizedStatus = res?.type === 'node'
+                ? (res.status === 'online' ? 'running' : res.status === 'offline' ? 'stopped' : res.status)
+                : res.status;
+            if (!activeFilters.statuses.length || !activeFilters.statuses.includes(normalizedStatus)) {
+                return false;
+            }
 
             const name = (res.name || res.vmid || res.node || '').toString().toLowerCase();
             const vmid = (res.vmid || '').toString().toLowerCase();

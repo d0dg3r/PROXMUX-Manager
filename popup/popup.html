@@ -61,12 +61,11 @@
                             <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M3,5H21V7H3V5M7,11H17V13H7V11M10,17H14V19H10V17Z"/></svg>
                         </div>
                         <div class="filter-bar">
-                            <button class="filter-pill active" data-i18n="filterAll" data-filter-type="all">All</button>
-                            <button class="filter-pill" data-i18n="filterNode" data-filter-type="node">Node</button>
-                            <button class="filter-pill" data-i18n="filterVM" data-filter-type="qemu">VM</button>
-                            <button class="filter-pill" data-i18n="filterLXC" data-filter-type="lxc">LXC</button>
-                            <button class="filter-pill" data-i18n="filterRunning" data-filter-status="running">Online</button>
-                            <button class="filter-pill" data-i18n="filterStopped" data-filter-status="stopped">Offline</button>
+                            <button class="filter-pill active" data-i18n="filterNode" data-filter-type="node">Node</button>
+                            <button class="filter-pill active" data-i18n="filterVM" data-filter-type="qemu">VM</button>
+                            <button class="filter-pill active" data-i18n="filterLXC" data-filter-type="lxc">LXC</button>
+                            <button class="filter-pill active" data-i18n="filterRunning" data-filter-status="running">Online</button>
+                            <button class="filter-pill active" data-i18n="filterStopped" data-filter-status="stopped">Offline</button>
                         </div>
                     </div>
                     <hr class="filters-row-divider" aria-hidden="true">
@@ -118,11 +117,16 @@
         <div id="header-alerts">
             <!-- Not Authenticated State -->
             <div id="no-auth" class="header-alert hidden">
-                <p data-i18n="noAuthDesc">Please configure your API credentials.</p>
-                <div class="header-alert-actions">
-                    <button id="open-settings-overlay" class="compact-btn primary">Configure</button>
-                    <button id="open-token-help-overlay" class="compact-btn">Token Setup Guide</button>
-                    <button id="open-import-overlay" class="compact-btn">Import Settings</button>
+                <div class="no-auth-content">
+                    <div class="no-auth-copy">
+                        <h3 class="no-auth-title" data-i18n="noAuthTitle">Welcome to PROXMUX</h3>
+                        <p class="no-auth-desc" data-i18n="noAuthDesc">Please configure your API credentials.</p>
+                    </div>
+                    <div class="header-alert-actions no-auth-actions">
+                        <button id="open-settings-overlay" class="compact-btn primary">Configure</button>
+                        <button id="open-token-help-overlay" class="compact-btn">Token Setup Guide</button>
+                        <button id="open-import-overlay" class="compact-btn">Import Settings</button>
+                    </div>
                 </div>
             </div>
 

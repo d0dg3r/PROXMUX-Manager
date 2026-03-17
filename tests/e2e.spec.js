@@ -434,7 +434,7 @@ test.describe('PROXMUX Popup (Mock Environment)', () => {
 
   test('should have operational filter pills', async ({ page }) => {
     const pills = page.locator('.filter-pill');
-    await expect(pills).toHaveCount(6); // All, Node, VM, LXC, Online, Offline
+    await expect(pills).toHaveCount(5); // Node, VM, LXC, Online, Offline
     await expect(pills.first()).toHaveClass(/active/);
   });
 

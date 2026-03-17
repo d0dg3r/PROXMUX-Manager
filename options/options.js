@@ -864,12 +864,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         await chrome.storage.local.set({ uiScale: normalized });
     });
 
-    chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== 'local') return;
-        if (!Object.prototype.hasOwnProperty.call(changes, 'uiScale')) return;
-        const nextScale = changes.uiScale?.newValue;
-        syncUiScaleControls(nextScale ?? DEFAULT_SETTINGS.uiScale);
-    });
+    if (chrome?.storage?.onChanged?.addListener) {
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName !== 'local') return;
+            if (!Object.prototype.hasOwnProperty.call(changes, 'uiScale')) return;
+            const nextScale = changes.uiScale?.newValue;
+            syncUiScaleControls(nextScale ?? DEFAULT_SETTINGS.uiScale);
+        });
+    }
 
     clusterSelect?.addEventListener('change', async () => {
         resetOptionsResetConfirmation();
