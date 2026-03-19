@@ -587,7 +587,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const entries = Object.entries(normalizeSshHostOverrides(overrides))
             .sort(([a], [b]) => a.localeCompare(b));
         entries.forEach(([alias, value]) => {
-            createInlineSshOverrideRow({ alias, user: value.user, keyPath: value.keyPath });
+            createInlineSshOverrideRow({
+                alias,
+                user: value.user,
+                keyPath: value.keyPath,
+                keyId: value.keyId
+            });
         });
         if (!entries.length) {
             createInlineSshOverrideRow({});
