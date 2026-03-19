@@ -14,6 +14,18 @@ This document outlines the planned features, improvements, and technical debt fo
 - [ ] **Node Health**: Visual indicators for node load and availability.
 - [ ] **Search Enhancements**: Grouping resources by node or pool.
 
+### v1.4.0: Snapshot Management
+- [ ] **Snapshot List**: Load and display snapshots per VM/LXC in the resource details view.
+- [ ] **Snapshot Create**: Create snapshots with name and optional description.
+- [ ] **Snapshot Delete**: Delete snapshots with a confirmation safeguard.
+- [ ] **Snapshot Rollback**: Restore a VM/LXC to a selected snapshot.
+- [ ] **API Layer**: Extend `ProxmoxAPI` with list/create/delete/rollback snapshot endpoints.
+- [ ] **UI Feedback**: Reuse the existing action status/error pattern for snapshot operations.
+- [ ] **Localization**: Add complete EN/DE i18n keys and messages for snapshot workflows.
+- [ ] **Test Coverage**: Add E2E/mock test coverage for create/delete/list/rollback flows.
+- [ ] **Documentation**: Update architecture and release documentation during implementation.
+- [ ] **Out of Scope (v1.4.0)**: No automatic snapshot schedules/policies in the first snapshot release.
+
 ### Future Ideas
 - [ ] **Multi-Cluster Support**: Manage multiple Proxmox clusters with a quick-switch toggle.
 - [ ] **Backup Monitoring**: View recent backup tasks and their status.

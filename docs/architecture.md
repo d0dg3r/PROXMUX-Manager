@@ -34,8 +34,10 @@ The heart of the extension. It encapsulates all communication with the Proxmox V
 The extension uses a shared UI for Side Panel and Floating Window contexts.
 - **`popup.html`**: Defines the searchable resource list and filter system.
 - **`popup.js`**: Handles state management, filtering, inline settings view toggling, and event delegation. It interacts with `ProxmoxAPI` to fetch data and launch consoles.
+- **Adaptive Density Controls**: Global `uiScale` is applied as a CSS variable and synchronized live across popup/sidepanel/options via storage events.
 - **Multi-Cluster Tabs**: Supports per-cluster context tabs plus an `All Clusters` aggregation mode, including scoped UI state persistence.
 - **No-Config Guided Entry**: Provides direct CTA routing to either `Cluster` configuration or `Backup & Restore` import-first onboarding.
+- **Status + Metrics Readability**: Resource status indicators/filters and stat-row value alignment are tuned for consistent visual scanning in dense lists.
 - **i18n**: Fully localized using `chrome.i18n` for English and German.
 
 ### 3.3 Action Routing Layer (`background.js`, `lib/window-launcher.js`)
@@ -48,6 +50,8 @@ Uses `chrome.storage.local` to store:
 - API Credentials legacy fallback keys (kept synchronized for compatibility).
 - Failover Node URLs (discovered dynamically).
 - User preferences (theme, display settings, toolbar click mode).
+- Global UI scale (`uiScale`) for unified sizing across all extension surfaces.
+- SSH export preferences (global defaults, key catalog, per-host overrides, shared host defaults, selected export format).
 - Community Scripts catalog/details cache and cache TTL settings.
 
 Uses `localStorage` for popup session UX state:
@@ -86,8 +90,9 @@ The popup top-bar search pipeline is designed for fast iterative filtering:
 1. User input updates `localStorage` and triggers immediate in-memory filtering.
 2. A context-aware clear control is shown only when a query exists.
 3. Search reset works via clear button and `Escape`, then re-renders the full filtered list.
-4. Filter group visibility is controlled by a collapsible toggle with an explicit active/collapsed visual state.
-5. Search, filters, and expanded row state are restored when the popup opens again.
+4. Type/status filters are independent multi-toggle groups (`Node`, `VM`, `LXC`, `Online`, `Offline`) with OR logic inside each group.
+5. Filter group visibility is controlled by a collapsible toggle with an explicit active/collapsed visual state.
+6. Search, filters, and expanded row state are restored when the popup opens again.
 
 ### 4.5 Community Scripts Assisted Install Flow
 1. Popup loads Community Scripts catalog via hybrid source strategy (API/JSON first, website fallback).
@@ -120,6 +125,21 @@ The popup top-bar search pipeline is designed for fast iterative filtering:
 2. Shared reset service creates one default cluster skeleton and removes previous cluster state.
 3. Global defaults are restored (theme/tab mode/display/scripts defaults), legacy credential keys are cleared.
 4. UI runtime state is rehydrated to no-config state and list/tabs are refreshed.
+
+### 4.10 SSH Config Export Flow
+1. User opens Settings (options page or inline settings) and configures export options in the `Extras` tab.
+2. Extension reads all enabled clusters with valid API credentials.
+3. For each cluster, extension fetches `/cluster/resources` and resolves host details (IP + OS hints).
+4. Linux-capable resources (nodes, LXCs, Linux VMs) are normalized into lowercase aliases based on visible list names.
+5. If duplicate aliases occur, a cluster suffix is appended only for colliding entries.
+6. Key selection uses a merged catalog: auto-detected common `~/.ssh` keys + manually stored key entries (`id`, `label`, `path`) with path dedupe.
+7. User and key mapping precedence is applied: per-host override first, then global defaults.
+8. Selected key IDs are resolved to concrete `IdentityFile` paths before writing config output.
+9. Shared OpenSSH directive defaults are emitted once in a top `Host *` block.
+10. Global default selected key is emitted as `IdentityFile` only when host defaults do not already define `IdentityFile`.
+11. User-selected export format routes output generation to OpenSSH config, PuTTY `.reg`, or CSV host list.
+12. Extension returns format-specific filename and MIME type for download/copy actions.
+13. Node status normalization maps `online/offline` to `running/stopped` during status filtering to keep node cards aligned with status pills.
 
 ## 5. Security Model
 - **Token Security**: API Tokens are stored locally in the browser's profile and are never transmitted to any third-party.

@@ -15,6 +15,30 @@ import {
     saveClustersState
 } from '../lib/cluster-store.js';
 import { resetToFactoryDefaults } from '../lib/settings-reset.js';
+import {
+    buildMergedSshKeyCatalog,
+    buildSshExportFilename,
+    buildSshExportText,
+    collectSshExportTargets,
+    findSshKeyById,
+    findSshKeyIdByPath,
+    getSshExportMimeType,
+    normalizeSshExportFormat,
+    normalizeSshKeyCatalog,
+    normalizeSshHostDefaults,
+    normalizeSshHostOverrides,
+    normalizeSshKeyPath,
+    normalizeSshUser,
+    parseSshHostDefaultsText,
+    stringifySshHostDefaults
+} from '../lib/ssh-config-export.js';
+import {
+    getUiScalePresetId,
+    normalizeUiScale,
+    resolveUiScalePresetValue,
+    toUiScaleFactor,
+    UI_SCALE_DEFAULT
+} from '../lib/ui-scale.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const proxmoxUrlInput = document.getElementById('proxmox-url');
@@ -22,15 +46,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     const apiTokenIdInput = document.getElementById('api-tokenid');
     const apiSecretInput = document.getElementById('api-secret');
     const themeSelect = document.getElementById('theme-select');
+    const uiScalePresetSelect = document.getElementById('ui-scale-preset');
+    const uiScaleSlider = document.getElementById('ui-scale-slider');
+    const uiScaleValue = document.getElementById('ui-scale-value');
     const saveBtn = document.getElementById('save-settings-btn');
     const testBtn = document.getElementById('test-connection-btn');
     const resetBtn = document.getElementById('reset-settings-btn');
     const closeBtn = document.getElementById('close-settings-btn');
     const status = document.getElementById('status');
+    const extrasStatus = document.getElementById('extras-status');
     const toggleSecretBtn = document.getElementById('toggle-secret');
     const scriptsCacheTtlInput = document.getElementById('scripts-cache-ttl');
     const defaultScriptNodeInput = document.getElementById('default-script-node');
+    const sshDefaultUserInput = document.getElementById('ssh-default-user');
+    const sshDefaultKeySelect = document.getElementById('ssh-default-key-select');
+    const sshHostOverridesList = document.getElementById('ssh-host-overrides-list');
+    const addSshHostOverrideBtn = document.getElementById('add-ssh-host-override-btn');
+    const sshKeyCatalogList = document.getElementById('ssh-key-catalog-list');
+    const addSshKeyCatalogBtn = document.getElementById('add-ssh-key-catalog-btn');
+    const sshHostDefaultsInput = document.getElementById('ssh-host-defaults');
+    const sshExportFormatSelect = document.getElementById('ssh-export-format');
+    const exportSshConfigBtn = document.getElementById('export-ssh-config-btn');
+    const copySshConfigBtn = document.getElementById('copy-ssh-config-btn');
     const defaultActionClickModeSelect = document.getElementById('default-action-click-mode');
+    const expandDetailsDefaultCheckbox = document.getElementById('expand-details-default');
     const openFloatingWindowBtn = document.getElementById('open-floating-window-btn');
     const clusterSelect = document.getElementById('cluster-select');
     const clusterNameInput = document.getElementById('cluster-name');
@@ -48,15 +87,293 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activeClusterId = null;
     let pendingOptionsClusterRemovalId = null;
     let pendingOptionsResetConfirmation = false;
+    let isImportingSettings = false;
+    let sshAliasOptions = [];
+    let mergedSshKeyCatalog = [];
     const DEFAULT_SETTINGS = {
         apiUser: 'api-admin@pve',
         apiTokenId: 'full-access',
         theme: 'auto',
+        uiScale: UI_SCALE_DEFAULT,
         consoleTabMode: 'duplicate',
         communityScriptsCacheTtlHours: 12,
         defaultScriptNode: '',
-        defaultActionClickMode: 'sidepanel'
+        sshDefaultUser: '',
+        sshDefaultKeyPath: '',
+        sshSelectedDefaultKeyId: '',
+        sshKeyCatalog: [],
+        sshHostOverrides: {},
+        sshHostDefaults: {
+            ServerAliveInterval: '30',
+            ServerAliveCountMax: '3'
+        },
+        defaultActionClickMode: 'sidepanel',
+        expandDetailsByDefault: false
     };
+
+    function mergeHostOverridesWithLegacy(hostOverrides, userOverrides) {
+        const merged = { ...normalizeSshHostOverrides(hostOverrides) };
+        const legacy = (userOverrides && typeof userOverrides === 'object' && !Array.isArray(userOverrides))
+            ? userOverrides
+            : {};
+        Object.entries(legacy).forEach(([alias, user]) => {
+            const aliasKey = String(alias || '').trim();
+            const normalizedUser = normalizeSshUser(user);
+            if (!aliasKey || !normalizedUser) return;
+            merged[aliasKey] = { ...(merged[aliasKey] || {}), user: normalizedUser };
+        });
+        return merged;
+    }
+
+    function collectLegacyKeyPaths(defaultKeyPath, hostOverrides) {
+        const paths = [];
+        const normalizedDefaultPath = normalizeSshKeyPath(defaultKeyPath);
+        if (normalizedDefaultPath) paths.push(normalizedDefaultPath);
+        Object.values(normalizeSshHostOverrides(hostOverrides)).forEach((override) => {
+            const normalizedPath = normalizeSshKeyPath(override?.keyPath);
+            if (normalizedPath) paths.push(normalizedPath);
+        });
+        return paths;
+    }
+
+    function rebuildMergedSshKeyCatalog(manualCatalog = [], legacyPaths = []) {
+        mergedSshKeyCatalog = buildMergedSshKeyCatalog(normalizeSshKeyCatalog(manualCatalog), legacyPaths);
+        return mergedSshKeyCatalog;
+    }
+
+    function buildKeyOptionLabel(entry) {
+        return `${entry.label} (${entry.path})`;
+    }
+
+    function buildManualKeyId(pathValue) {
+        const normalized = normalizeSshKeyPath(pathValue)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        return normalized ? `manual-${normalized}` : `manual-key`;
+    }
+
+    function buildSshKeySelect(selectedKeyId = '') {
+        const select = document.createElement('select');
+        select.className = 'form-control ssh-override-key-select';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Use global/default';
+        select.appendChild(placeholder);
+        mergedSshKeyCatalog.forEach((entry) => {
+            const option = document.createElement('option');
+            option.value = entry.id;
+            option.textContent = buildKeyOptionLabel(entry);
+            select.appendChild(option);
+        });
+        select.value = selectedKeyId || '';
+        return select;
+    }
+
+    function renderDefaultSshKeySelect(selectedKeyId = '') {
+        if (!sshDefaultKeySelect) return;
+        sshDefaultKeySelect.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'None';
+        sshDefaultKeySelect.appendChild(placeholder);
+        mergedSshKeyCatalog.forEach((entry) => {
+            const option = document.createElement('option');
+            option.value = entry.id;
+            option.textContent = buildKeyOptionLabel(entry);
+            sshDefaultKeySelect.appendChild(option);
+        });
+        sshDefaultKeySelect.value = selectedKeyId || '';
+    }
+
+    function createSshKeyCatalogRow(entry = {}) {
+        if (!sshKeyCatalogList) return;
+        const row = document.createElement('div');
+        row.className = 'ssh-key-catalog-row';
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'form-control ssh-key-catalog-label-input';
+        labelInput.placeholder = 'My key';
+        labelInput.value = String(entry.label || '').trim();
+        const pathInput = document.createElement('input');
+        pathInput.type = 'text';
+        pathInput.className = 'form-control ssh-key-catalog-path-input';
+        pathInput.placeholder = '~/.ssh/id_ed25519';
+        pathInput.value = normalizeSshKeyPath(entry.path || '');
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'secondary-btn ssh-key-catalog-remove-btn';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
+            row.remove();
+            refreshSshKeySelectors();
+        });
+        labelInput.addEventListener('input', refreshSshKeySelectors);
+        pathInput.addEventListener('input', refreshSshKeySelectors);
+        row.append(labelInput, pathInput, removeBtn);
+        sshKeyCatalogList.appendChild(row);
+    }
+
+    function readManualSshKeyCatalogFromRows() {
+        const rows = sshKeyCatalogList?.querySelectorAll('.ssh-key-catalog-row') || [];
+        const entries = [];
+        const seenPaths = new Set();
+        rows.forEach((row, index) => {
+            const label = String(row.querySelector('.ssh-key-catalog-label-input')?.value || '').trim();
+            const path = normalizeSshKeyPath(row.querySelector('.ssh-key-catalog-path-input')?.value || '');
+            if (!path) return;
+            const normalizedPath = path.toLowerCase();
+            if (seenPaths.has(normalizedPath)) {
+                throw new Error(`Duplicate SSH key path in catalog: ${path}`);
+            }
+            seenPaths.add(normalizedPath);
+            entries.push({
+                id: buildManualKeyId(path) || `manual-key-${index + 1}`,
+                label: label || path,
+                path,
+                source: 'manual'
+            });
+        });
+        return normalizeSshKeyCatalog(entries);
+    }
+
+    function renderManualSshKeyCatalog(catalog = []) {
+        if (!sshKeyCatalogList) return;
+        sshKeyCatalogList.innerHTML = '';
+        normalizeSshKeyCatalog(catalog).forEach((entry) => createSshKeyCatalogRow(entry));
+        if (!sshKeyCatalogList.childElementCount) {
+            createSshKeyCatalogRow({});
+        }
+    }
+
+    function buildAliasSelect(selectedAlias = '') {
+        const select = document.createElement('select');
+        select.className = 'form-control ssh-override-alias-select';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select host alias';
+        select.appendChild(placeholder);
+        const options = Array.from(new Set([...(sshAliasOptions || []), selectedAlias].filter(Boolean)))
+            .sort((a, b) => a.localeCompare(b));
+        options.forEach((alias) => {
+            const option = document.createElement('option');
+            option.value = alias;
+            option.textContent = alias;
+            select.appendChild(option);
+        });
+        select.value = selectedAlias || '';
+        return select;
+    }
+
+    function createSshHostOverrideRow(override = {}) {
+        if (!sshHostOverridesList) return;
+        const row = document.createElement('div');
+        row.className = 'ssh-override-row';
+
+        const aliasSelect = buildAliasSelect(String(override.alias || '').trim());
+        const userInput = document.createElement('input');
+        userInput.type = 'text';
+        userInput.className = 'form-control ssh-override-user-input';
+        userInput.placeholder = 'ubuntu';
+        userInput.value = normalizeSshUser(override.user || '');
+
+        const selectedKeyId = String(
+            override.keyId || findSshKeyIdByPath(mergedSshKeyCatalog, override.keyPath) || ''
+        ).trim();
+        const keySelect = buildSshKeySelect(selectedKeyId);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'secondary-btn ssh-override-remove-btn';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => row.remove());
+
+        row.append(aliasSelect, userInput, keySelect, removeBtn);
+        sshHostOverridesList.appendChild(row);
+    }
+
+    function readSshHostOverridesFromRows() {
+        const next = {};
+        const rows = sshHostOverridesList?.querySelectorAll('.ssh-override-row') || [];
+        rows.forEach((row) => {
+            const alias = String(row.querySelector('.ssh-override-alias-select')?.value || '').trim();
+            const user = normalizeSshUser(row.querySelector('.ssh-override-user-input')?.value || '');
+            const keyId = String(row.querySelector('.ssh-override-key-select')?.value || '').trim();
+            const keyPath = normalizeSshKeyPath(findSshKeyById(mergedSshKeyCatalog, keyId)?.path || '');
+            if (!alias || (!user && !keyPath && !keyId)) return;
+            const entry = {};
+            if (user) entry.user = user;
+            if (keyId) entry.keyId = keyId;
+            if (keyPath) entry.keyPath = keyPath;
+            next[alias] = entry;
+        });
+        return next;
+    }
+
+    function renderSshHostOverrides(overrides = {}) {
+        if (!sshHostOverridesList) return;
+        sshHostOverridesList.innerHTML = '';
+        const entries = Object.entries(normalizeSshHostOverrides(overrides))
+            .sort(([a], [b]) => a.localeCompare(b));
+        entries.forEach(([alias, value]) => {
+            createSshHostOverrideRow({
+                alias,
+                user: value.user,
+                keyPath: value.keyPath,
+                keyId: value.keyId
+            });
+        });
+        if (!entries.length) {
+            createSshHostOverrideRow({});
+        }
+    }
+
+    function refreshSshKeySelectors() {
+        const selectedDefaultKeyId = String(sshDefaultKeySelect?.value || '').trim();
+        const selectedOverrideKeyIds = Array.from(sshHostOverridesList?.querySelectorAll('.ssh-override-row') || [])
+            .map((row) => String(row.querySelector('.ssh-override-key-select')?.value || '').trim());
+        let manualCatalog = [];
+        try {
+            manualCatalog = readManualSshKeyCatalogFromRows();
+        } catch (_error) {
+            manualCatalog = normalizeSshKeyCatalog([]);
+        }
+        rebuildMergedSshKeyCatalog(manualCatalog, []);
+        renderDefaultSshKeySelect(selectedDefaultKeyId);
+        const rows = sshHostOverridesList?.querySelectorAll('.ssh-override-row') || [];
+        rows.forEach((row, index) => {
+            const currentKeyId = selectedOverrideKeyIds[index] || '';
+            const nextSelect = buildSshKeySelect(currentKeyId);
+            const oldSelect = row.querySelector('.ssh-override-key-select');
+            if (oldSelect) {
+                row.replaceChild(nextSelect, oldSelect);
+            }
+        });
+    }
+
+    async function refreshSshAliasOptions() {
+        try {
+            const { targets } = await collectSshExportTargets(clusters, (cluster) => (
+                new ProxmoxAPI(cluster.proxmoxUrl, cluster.apiToken, cluster.failoverUrls || [])
+            ));
+            const discovered = (Array.isArray(targets) ? targets : []).map((target) => target.alias);
+            const existingRows = sshHostOverridesList?.querySelectorAll('.ssh-override-row') || [];
+            const selectedAliases = Array.from(existingRows)
+                .map((row) => String(row.querySelector('.ssh-override-alias-select')?.value || '').trim())
+                .filter(Boolean);
+            sshAliasOptions = Array.from(new Set([...discovered, ...selectedAliases])).sort((a, b) => a.localeCompare(b));
+            existingRows.forEach((row) => {
+                const currentAlias = String(row.querySelector('.ssh-override-alias-select')?.value || '').trim();
+                const nextSelect = buildAliasSelect(currentAlias);
+                const oldSelect = row.querySelector('.ssh-override-alias-select');
+                if (oldSelect) {
+                    row.replaceChild(nextSelect, oldSelect);
+                }
+            });
+        } catch (_error) {
+            // Keep existing alias options when discovery fails.
+        }
+    }
 
     // i18n Initialization
     function initI18n() {
@@ -109,10 +426,137 @@ document.addEventListener('DOMContentLoaded', async () => {
         'api-user',
         'api-tokenid',
         'default-script-node',
+        'ssh-default-user',
+        'ssh-host-defaults',
         'export-password',
         'export-password-confirm',
         'import-password'
     ]);
+
+    function getSshSettingsFromInputs() {
+        const sshDefaultUser = normalizeSshUser(sshDefaultUserInput?.value || '');
+        const sshKeyCatalog = readManualSshKeyCatalogFromRows();
+        const sshSelectedDefaultKeyId = String(sshDefaultKeySelect?.value || '').trim();
+        rebuildMergedSshKeyCatalog(sshKeyCatalog, []);
+        const sshDefaultKeyPath = normalizeSshKeyPath(
+            findSshKeyById(mergedSshKeyCatalog, sshSelectedDefaultKeyId)?.path || ''
+        );
+        const sshHostOverrides = normalizeSshHostOverrides(readSshHostOverridesFromRows());
+        const sshUserOverrides = {};
+        Object.entries(sshHostOverrides).forEach(([alias, override]) => {
+            if (!override?.user) return;
+            sshUserOverrides[alias] = override.user;
+        });
+        const sshHostDefaults = normalizeSshHostDefaults(
+            parseSshHostDefaultsText(sshHostDefaultsInput?.value || '')
+        );
+        return {
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults
+        };
+    }
+
+    async function persistSshSettingsFromInputs() {
+        const {
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults
+        } = getSshSettingsFromInputs();
+        await chrome.storage.local.set({
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults
+        });
+        return {
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults
+        };
+    }
+
+    function getSshExportFormatLabel(format) {
+        if (format === 'putty') return 'PuTTY registry file';
+        if (format === 'csv') return 'SSH host CSV';
+        return 'SSH config';
+    }
+
+    async function buildSshConfigForExport() {
+        const {
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults
+        } = await persistSshSettingsFromInputs();
+        const { targets, errors } = await collectSshExportTargets(clusters, (cluster) => (
+            new ProxmoxAPI(cluster.proxmoxUrl, cluster.apiToken, cluster.failoverUrls || [])
+        ));
+        if (!targets.length) {
+            throw new Error('No Linux hosts with detected IP were found for SSH export.');
+        }
+        const exportFormat = normalizeSshExportFormat(sshExportFormatSelect?.value || 'openssh');
+        const text = buildSshExportText(targets, exportFormat, {
+            defaultUser: sshDefaultUser,
+            defaultKeyPath: sshDefaultKeyPath,
+            selectedDefaultKeyId: sshSelectedDefaultKeyId,
+            keyCatalog: sshKeyCatalog,
+            hostOverrides: sshHostOverrides,
+            userOverrides: sshUserOverrides,
+            hostDefaults: sshHostDefaults
+        });
+        return {
+            text,
+            targetCount: targets.length,
+            errorCount: errors.length,
+            exportFormat,
+            filename: buildSshExportFilename(exportFormat),
+            mimeType: getSshExportMimeType(exportFormat)
+        };
+    }
+
+    async function downloadTextFile(content, filename, mimeType = 'text/plain;charset=utf-8') {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        try {
+            await new Promise((resolve, reject) => {
+                chrome.downloads.download(
+                    { url, filename, saveAs: true, conflictAction: 'uniquify' },
+                    (downloadId) => {
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                            return;
+                        }
+                        if (!downloadId) {
+                            reject(new Error('Download failed.'));
+                            return;
+                        }
+                        resolve(downloadId);
+                    }
+                );
+            });
+        } finally {
+            setTimeout(() => URL.revokeObjectURL(url), 1500);
+        }
+    }
 
     function normalizeAndValidateHttpsUrl(input) {
         const raw = (input || '').trim();
@@ -207,6 +651,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             tab.classList.add('active');
             document.getElementById(target).classList.add('active');
+            if (target === 'extras') {
+                refreshSshKeySelectors();
+                refreshSshAliasOptions();
+            }
         });
     });
 
@@ -225,6 +673,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.body.classList.add('dark-theme');
         }
         // 'auto' does nothing, letting CSS media query handle it
+    }
+
+    function applyUiScale(scaleValue) {
+        const normalized = normalizeUiScale(scaleValue, DEFAULT_SETTINGS.uiScale);
+        document.documentElement.style.setProperty('--ui-scale', toUiScaleFactor(normalized));
+        if (uiScaleValue) {
+            uiScaleValue.textContent = `${normalized}%`;
+        }
+        return normalized;
+    }
+
+    function syncUiScaleControls(scaleValue) {
+        const normalized = applyUiScale(scaleValue);
+        if (uiScaleSlider) {
+            uiScaleSlider.value = String(normalized);
+        }
+        if (uiScalePresetSelect) {
+            uiScalePresetSelect.value = getUiScalePresetId(normalized);
+        }
+        return normalized;
     }
 
     function getActiveCluster() {
@@ -313,10 +781,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function reloadSettingsFromStorage() {
         const items = await chrome.storage.local.get([
             'theme',
+            'uiScale',
             'consoleTabMode',
             'communityScriptsCacheTtlHours',
             'defaultScriptNode',
-            'defaultActionClickMode'
+            'sshDefaultUser',
+            'sshDefaultKeyPath',
+            'sshSelectedDefaultKeyId',
+            'sshKeyCatalog',
+            'sshHostOverrides',
+            'sshUserOverrides',
+            'sshHostDefaults',
+            'defaultActionClickMode',
+            'expandDetailsByDefault'
         ]);
         const clusterState = await getClustersState();
         clusters = clusterState.clusters;
@@ -331,9 +808,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         fillClusterForm();
         scriptsCacheTtlInput.value = Number(items.communityScriptsCacheTtlHours || 12);
         defaultScriptNodeInput.value = items.defaultScriptNode || '';
+        sshDefaultUserInput.value = normalizeSshUser(items.sshDefaultUser || DEFAULT_SETTINGS.sshDefaultUser);
+        const mergedOverrides = mergeHostOverridesWithLegacy(items.sshHostOverrides, items.sshUserOverrides);
+        const legacyPaths = collectLegacyKeyPaths(items.sshDefaultKeyPath, mergedOverrides);
+        rebuildMergedSshKeyCatalog(items.sshKeyCatalog || DEFAULT_SETTINGS.sshKeyCatalog, legacyPaths);
+        renderManualSshKeyCatalog(items.sshKeyCatalog || DEFAULT_SETTINGS.sshKeyCatalog);
+        const selectedDefaultKeyId = String(items.sshSelectedDefaultKeyId || '').trim()
+            || findSshKeyIdByPath(mergedSshKeyCatalog, items.sshDefaultKeyPath || '');
+        renderDefaultSshKeySelect(selectedDefaultKeyId);
+        renderSshHostOverrides(mergedOverrides);
+        sshHostDefaultsInput.value = stringifySshHostDefaults(items.sshHostDefaults || DEFAULT_SETTINGS.sshHostDefaults);
         defaultActionClickModeSelect.value = ['sidepanel', 'floating'].includes(items.defaultActionClickMode)
             ? items.defaultActionClickMode
             : 'sidepanel';
+        if (expandDetailsDefaultCheckbox) {
+            expandDetailsDefaultCheckbox.checked = Boolean(items.expandDetailsByDefault);
+        }
         if (items.theme) {
             themeSelect.value = items.theme;
             applyTheme(items.theme);
@@ -341,20 +831,52 @@ document.addEventListener('DOMContentLoaded', async () => {
             themeSelect.value = DEFAULT_SETTINGS.theme;
             applyTheme(DEFAULT_SETTINGS.theme);
         }
+        syncUiScaleControls(items.uiScale ?? DEFAULT_SETTINGS.uiScale);
         if (items.consoleTabMode) {
             document.getElementById('tab-mode-select').value = items.consoleTabMode;
         } else {
             document.getElementById('tab-mode-select').value = DEFAULT_SETTINGS.consoleTabMode;
         }
         updateOptionsInputClearButtons();
+        await refreshSshAliasOptions();
     }
 
     await reloadSettingsFromStorage();
     setActiveSettingsSubtab('cluster');
+    addSshHostOverrideBtn?.addEventListener('click', async () => {
+        createSshHostOverrideRow({});
+        refreshSshKeySelectors();
+        await refreshSshAliasOptions();
+    });
+    addSshKeyCatalogBtn?.addEventListener('click', () => {
+        createSshKeyCatalogRow({});
+        refreshSshKeySelectors();
+    });
 
     themeSelect.addEventListener('change', () => {
         applyTheme(themeSelect.value);
     });
+
+    uiScalePresetSelect?.addEventListener('change', async () => {
+        if (uiScalePresetSelect.value === 'custom') return;
+        const nextScale = resolveUiScalePresetValue(uiScalePresetSelect.value, DEFAULT_SETTINGS.uiScale);
+        const normalized = syncUiScaleControls(nextScale);
+        await chrome.storage.local.set({ uiScale: normalized });
+    });
+
+    uiScaleSlider?.addEventListener('input', async () => {
+        const normalized = syncUiScaleControls(uiScaleSlider.value);
+        await chrome.storage.local.set({ uiScale: normalized });
+    });
+
+    if (chrome?.storage?.onChanged?.addListener) {
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName !== 'local') return;
+            if (!Object.prototype.hasOwnProperty.call(changes, 'uiScale')) return;
+            const nextScale = changes.uiScale?.newValue;
+            syncUiScaleControls(nextScale ?? DEFAULT_SETTINGS.uiScale);
+        });
+    }
 
     clusterSelect?.addEventListener('change', async () => {
         resetOptionsResetConfirmation();
@@ -458,9 +980,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         const tokenId = apiTokenIdInput.value.trim();
         const secret = apiSecretInput.value.trim();
         const theme = themeSelect.value;
+        const uiScale = normalizeUiScale(uiScaleSlider?.value, DEFAULT_SETTINGS.uiScale);
         const communityScriptsCacheTtlHours = Math.max(1, Math.min(168, Number(scriptsCacheTtlInput.value || 12)));
         const defaultScriptNode = defaultScriptNodeInput.value.trim();
+        let sshDefaultUser = '';
+        let sshDefaultKeyPath = '';
+        let sshSelectedDefaultKeyId = '';
+        let sshKeyCatalog = [];
+        let sshHostOverrides = {};
+        let sshUserOverrides = {};
+        let sshHostDefaults = {};
+        try {
+            const sshSettings = getSshSettingsFromInputs();
+            sshDefaultUser = sshSettings.sshDefaultUser;
+            sshDefaultKeyPath = sshSettings.sshDefaultKeyPath;
+            sshSelectedDefaultKeyId = sshSettings.sshSelectedDefaultKeyId;
+            sshKeyCatalog = sshSettings.sshKeyCatalog;
+            sshHostOverrides = sshSettings.sshHostOverrides;
+            sshUserOverrides = sshSettings.sshUserOverrides;
+            sshHostDefaults = sshSettings.sshHostDefaults;
+        } catch (error) {
+            status.textContent = `SSH settings error: ${error.message || 'Invalid SSH settings.'}`;
+            status.style.color = 'var(--error)';
+            return;
+        }
         const defaultActionClickMode = defaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel';
+        const expandDetailsByDefault = Boolean(expandDetailsDefaultCheckbox?.checked);
 
         if (!normalized.ok || !user || !tokenId || !secret) {
             status.textContent = normalized.ok ? 'Please fill in all fields.' : normalized.error;
@@ -473,10 +1018,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         await persistClusterFromForm();
         await chrome.storage.local.set({
             theme: theme,
+            uiScale,
             consoleTabMode: document.getElementById('tab-mode-select').value,
             communityScriptsCacheTtlHours,
             defaultScriptNode,
-            defaultActionClickMode
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults,
+            defaultActionClickMode,
+            expandDetailsByDefault
         });
 
         status.textContent = 'Settings saved successfully!';
@@ -557,7 +1111,60 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    importSettingsBtn?.addEventListener('click', async () => {
+    exportSshConfigBtn?.addEventListener('click', async () => {
+        resetOptionsResetConfirmation();
+        if (extrasStatus) {
+            extrasStatus.textContent = 'Building SSH config...';
+            extrasStatus.style.color = 'var(--text-secondary)';
+        }
+        try {
+            await persistClusterFromForm();
+            const { text, targetCount, errorCount, exportFormat, filename, mimeType } = await buildSshConfigForExport();
+            await downloadTextFile(text, filename, mimeType);
+            const formatLabel = getSshExportFormatLabel(exportFormat);
+            const message = errorCount > 0
+                ? `${formatLabel} downloaded (${targetCount} hosts, ${errorCount} cluster errors).`
+                : `${formatLabel} downloaded (${targetCount} hosts).`;
+            if (extrasStatus) {
+                extrasStatus.textContent = message;
+                extrasStatus.style.color = 'var(--success)';
+            }
+        } catch (error) {
+            if (extrasStatus) {
+                extrasStatus.textContent = `SSH export failed: ${error.message || 'Unknown error.'}`;
+                extrasStatus.style.color = 'var(--error)';
+            }
+        }
+    });
+
+    copySshConfigBtn?.addEventListener('click', async () => {
+        resetOptionsResetConfirmation();
+        if (extrasStatus) {
+            extrasStatus.textContent = 'Building SSH config...';
+            extrasStatus.style.color = 'var(--text-secondary)';
+        }
+        try {
+            await persistClusterFromForm();
+            const { text, targetCount, errorCount, exportFormat } = await buildSshConfigForExport();
+            await navigator.clipboard.writeText(text);
+            const formatLabel = getSshExportFormatLabel(exportFormat);
+            const message = errorCount > 0
+                ? `${formatLabel} copied (${targetCount} hosts, ${errorCount} cluster errors).`
+                : `${formatLabel} copied (${targetCount} hosts).`;
+            if (extrasStatus) {
+                extrasStatus.textContent = message;
+                extrasStatus.style.color = 'var(--success)';
+            }
+        } catch (error) {
+            if (extrasStatus) {
+                extrasStatus.textContent = `SSH copy failed: ${error.message || 'Unknown error.'}`;
+                extrasStatus.style.color = 'var(--error)';
+            }
+        }
+    });
+
+    async function runImportSettings() {
+        if (isImportingSettings) return;
         resetOptionsResetConfirmation();
         const selectedFile = importFileInput.files?.[0];
         if (!selectedFile) {
@@ -566,6 +1173,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        isImportingSettings = true;
+        if (importSettingsBtn) importSettingsBtn.disabled = true;
         try {
             const rawText = await selectedFile.text();
             await importEncryptedSettingsFromText(rawText, importPasswordInput.value || '');
@@ -580,7 +1189,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             status.textContent = `Import failed: ${error.message || 'Unknown error.'}`;
             status.style.color = 'var(--error)';
+        } finally {
+            isImportingSettings = false;
+            if (importSettingsBtn) importSettingsBtn.disabled = false;
         }
+    }
+
+    importSettingsBtn?.addEventListener('click', async () => {
+        await runImportSettings();
+    });
+
+    importPasswordInput?.addEventListener('keydown', async (event) => {
+        if (event.key !== 'Enter') return;
+        if (!importFileInput.files?.[0]) return;
+        event.preventDefault();
+        await runImportSettings();
     });
 
     resetBtn.addEventListener('click', async () => {

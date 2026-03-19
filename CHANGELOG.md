@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-03-16
+
+### Added
+- **Calm Premium Navigation System**: Introduced a calmer, premium visual hierarchy for cluster tabs and filter rows with a single strong active-state signal.
+
+### Changed
+- **Filter Interaction Model**: Replaced single-select `All` type behavior with independent multi-toggle filters for `Node`, `VM`, `LXC`, `Online`, and `Offline`.
+- **Default Filter Semantics**: Type and status filters now initialize with all toggles enabled and persist per-scope multi-select state.
+
+### Fixed
+- **Node Visibility With Status Filters**: Mapped node statuses (`online`/`offline`) to filter statuses (`running`/`stopped`) so nodes remain visible under active status filtering.
+
+## [1.2.1-beta.2] - 2026-03-16
+
+### Added
+- **UI Scale Presets**: Added global UI scaling controls (`Compact`, `Standard`, `Large` + fine slider) for popup/sidepanel and options page.
+- **Multi-Format SSH Export**: Added OpenSSH, PuTTY `.reg`, and CSV export output with format-aware filenames and MIME types.
+
+### Changed
+- **Resource Card Consistency**: Unified row structure and chip placement across `All`, `Favorites`, and cluster-specific tabs.
+- **Status Presentation Refresh**: Updated running/stopped/unknown indicators, status filter pills, and transient power-action status chips for clearer state feedback.
+- **Stats Alignment**: Standardized details rows to a stable 3-column layout so progress bars share equal width and right-side values align on one vertical line.
+- **Control Sizing Consistency**: Rebalanced search field and settings tab sizing/weight in popup and options for better visual hierarchy.
+
+### Fixed
+- **Search Field Height Regression**: Fixed oversized popup search input height by constraining rendered control height to match other form controls.
+- **Cross-View Scale Sync**: UI scale changes now propagate live between open popup/sidepanel/options contexts via storage change listeners.
+
 ## [1.2.0] - 2026-03-15
 
 ### Added
@@ -169,6 +197,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Side Panel support for persistent cluster management.
 - Proxmox API integration for resource monitoring.
 
+[1.2.1]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.1-beta.2...v1.2.1
+[1.2.1-beta.2]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.0...v1.2.1-beta.2
 [1.2.0]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.0-beta.3...v1.2.0
 [1.2.0-beta.3]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.0-beta.2...v1.2.0-beta.3
 [1.2.0-beta.2]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.0-beta.1...v1.2.0-beta.2

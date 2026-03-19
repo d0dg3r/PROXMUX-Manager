@@ -478,9 +478,9 @@ header {
     background-color: var(--tag-bg);
     border: 1px solid var(--border);
     color: var(--text-secondary);
-    padding: 4px 10px;
+    padding: 3px 9px;
     border-radius: 20px;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     cursor: pointer;
     font-weight: 500;
 }
@@ -621,8 +621,8 @@ main {
     background: transparent;
     color: var(--text-secondary);
     border-radius: 999px;
-    padding: 5px 10px;
-    font-size: 0.76rem;
+    padding: 4px 8px;
+    font-size: 0.72rem;
     font-weight: 600;
 }
 
@@ -647,7 +647,7 @@ main {
 .inline-settings-form-group label {
     display: block;
     margin-bottom: 6px;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     color: var(--text-secondary);
     font-weight: 600;
 }
@@ -657,10 +657,12 @@ main {
     background-color: var(--tag-bg);
     border: 1px solid var(--border);
     color: var(--text-primary);
-    padding: 8px 10px;
+    min-height: 30px;
+    padding: 6px 9px;
     border-radius: 8px;
     box-sizing: border-box;
-    font-size: 0.84rem;
+    font-size: 0.82rem;
+    line-height: 1.2;
 }
 
 .inline-settings-form-row {
@@ -678,10 +680,12 @@ main {
 
 .inline-action-btn {
     margin: 0;
-    min-height: 36px;
+    min-height: 30px;
+    padding: 5px 10px;
     border-radius: 10px;
-    font-size: 0.83rem;
+    font-size: 0.8rem;
     font-weight: 600;
+    line-height: 1.15;
 }
 
 .inline-action-btn.primary {
@@ -790,8 +794,8 @@ main {
     background: var(--panel-bg);
     color: var(--text-secondary);
     border-radius: 999px;
-    padding: 6px 12px;
-    font-size: 0.74rem;
+    padding: 5px 10px;
+    font-size: 0.72rem;
     font-weight: 600;
     white-space: nowrap;
 }

@@ -61,12 +61,11 @@
                             <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M3,5H21V7H3V5M7,11H17V13H7V11M10,17H14V19H10V17Z"/></svg>
                         </div>
                         <div class="filter-bar">
-                            <button class="filter-pill active" data-i18n="filterAll" data-filter-type="all">All</button>
-                            <button class="filter-pill" data-i18n="filterNode" data-filter-type="node">Node</button>
-                            <button class="filter-pill" data-i18n="filterVM" data-filter-type="qemu">VM</button>
-                            <button class="filter-pill" data-i18n="filterLXC" data-filter-type="lxc">LXC</button>
-                            <button class="filter-pill" data-i18n="filterRunning" data-filter-status="running">Online</button>
-                            <button class="filter-pill" data-i18n="filterStopped" data-filter-status="stopped">Offline</button>
+                            <button class="filter-pill active" data-i18n="filterNode" data-filter-type="node">Node</button>
+                            <button class="filter-pill active" data-i18n="filterVM" data-filter-type="qemu">VM</button>
+                            <button class="filter-pill active" data-i18n="filterLXC" data-filter-type="lxc">LXC</button>
+                            <button class="filter-pill active" data-i18n="filterRunning" data-filter-status="running">Online</button>
+                            <button class="filter-pill active" data-i18n="filterStopped" data-filter-status="stopped">Offline</button>
                         </div>
                     </div>
                     <hr class="filters-row-divider" aria-hidden="true">
@@ -95,6 +94,10 @@
                                     <input type="checkbox" id="show-tags" checked>
                                     <span class="setting-chip-label filter-pill" data-i18n="showTags">Tags</span>
                                 </label>
+                                <label class="setting-chip" for="expand-details-default">
+                                    <input type="checkbox" id="expand-details-default">
+                                    <span class="setting-chip-label filter-pill" data-i18n="expandDetailsDefault">Expand details by default</span>
+                                </label>
                         </div>
                     </div>
                     <hr class="filters-row-divider" aria-hidden="true">
@@ -114,10 +117,16 @@
         <div id="header-alerts">
             <!-- Not Authenticated State -->
             <div id="no-auth" class="header-alert hidden">
-                <p data-i18n="noAuthDesc">Please configure your API credentials.</p>
-                <div class="header-alert-actions">
-                    <button id="open-settings-overlay" class="compact-btn primary">Configure</button>
-                    <button id="open-import-overlay" class="compact-btn">Import Settings</button>
+                <div class="no-auth-content">
+                    <div class="no-auth-copy">
+                        <h3 class="no-auth-title" data-i18n="noAuthTitle">Welcome to PROXMUX</h3>
+                        <p class="no-auth-desc" data-i18n="noAuthDesc">Please configure your API credentials.</p>
+                    </div>
+                    <div class="header-alert-actions no-auth-actions">
+                        <button id="open-settings-overlay" class="compact-btn primary">Configure</button>
+                        <button id="open-token-help-overlay" class="compact-btn">Token Setup Guide</button>
+                        <button id="open-import-overlay" class="compact-btn">Import Settings</button>
+                    </div>
                 </div>
             </div>
 
@@ -187,6 +196,7 @@
                 <div class="inline-settings-subtabs" role="tablist" aria-label="Settings Sections">
                     <button type="button" class="inline-settings-subtab-btn active" data-inline-settings-subtab="cluster">Cluster</button>
                     <button type="button" class="inline-settings-subtab-btn" data-inline-settings-subtab="backup">Backup & Restore</button>
+                    <button type="button" class="inline-settings-subtab-btn" data-inline-settings-subtab="extras" data-i18n="extrasTab">Extras</button>
                     <button type="button" class="inline-settings-subtab-btn" data-inline-settings-subtab="help" data-i18n="helpTab">Help</button>
                     <button type="button" class="inline-settings-subtab-btn" data-inline-settings-subtab="about" data-i18n="aboutTab">About</button>
                 </div>
@@ -243,6 +253,20 @@
                 </div>
 
                 <div class="inline-settings-form-group">
+                    <label for="inline-ui-scale-preset">UI Scale</label>
+                    <select id="inline-ui-scale-preset" class="inline-form-control">
+                        <option value="compact">Compact (90%)</option>
+                        <option value="standard">Standard (100%)</option>
+                        <option value="large">Large (115%)</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <div class="inline-ui-scale-row">
+                        <input type="range" id="inline-ui-scale-slider" class="inline-ui-scale-slider" min="85" max="140" step="1" value="100">
+                        <span id="inline-ui-scale-value">100%</span>
+                    </div>
+                </div>
+
+                <div class="inline-settings-form-group">
                     <label for="inline-tab-mode-select" data-i18n="consoleTabMode">Console Tab Behavior</label>
                     <select id="inline-tab-mode-select" class="inline-form-control">
                         <option value="multiple" data-i18n="tabMultiple">Open new tab every time</option>
@@ -258,11 +282,11 @@
                         <option value="floating" data-i18n="clickModeFloating">Open floating window</option>
                     </select>
                 </div>
+
                 </div>
 
                 <div class="inline-settings-subtab-panel" data-inline-settings-panel="backup">
                 <div class="inline-settings-form-group inline-backup-section">
-                    <label>Backup & Restore</label>
                     <div id="inline-backup-export-block">
                     <div class="inline-settings-form-row">
                         <div class="inline-settings-form-group">
@@ -294,9 +318,71 @@
                 </div>
                 </div>
 
+                <div class="inline-settings-subtab-panel" data-inline-settings-panel="extras">
+                <div class="inline-settings-form-group">
+                    <label for="inline-ssh-default-user" data-i18n="sshDefaultUserLabel">Default SSH user (optional)</label>
+                    <input type="text" id="inline-ssh-default-user" placeholder="root">
+                    <small data-i18n="sshDefaultUserHelp">Used when no per-host override is configured.</small>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label for="inline-ssh-default-key-select" data-i18n="sshDefaultKeyPathLabel">Default SSH key path (optional)</label>
+                    <select id="inline-ssh-default-key-select" class="inline-form-control"></select>
+                    <small data-i18n="sshDefaultKeyPathHelp">Used as IdentityFile in Host * when no IdentityFile exists in SSH host defaults.</small>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label data-i18n="sshHostOverridesLabel">Per-host overrides</label>
+                    <div id="inline-ssh-host-overrides-list" class="inline-ssh-overrides-list"></div>
+                    <button id="inline-add-ssh-host-override-btn" type="button" class="inline-action-btn secondary inline-ssh-override-add-btn" data-i18n="sshAddOverrideBtn">Add Override</button>
+                    <small data-i18n="sshHostOverridesHelp">Choose host alias and optionally override user and SSH key path.</small>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label data-i18n="sshKeyCatalogLabel">SSH key catalog</label>
+                    <div id="inline-ssh-key-catalog-list" class="inline-ssh-key-catalog-list"></div>
+                    <button id="inline-add-ssh-key-catalog-btn" type="button" class="inline-action-btn secondary inline-ssh-key-catalog-add-btn" data-i18n="sshAddKeyBtn">Add SSH Key</button>
+                    <small data-i18n="sshKeyCatalogHelp">Manage custom key entries. Auto-detected common keys are added automatically.</small>
+                </div>
+
+                <div class="inline-settings-form-group">
+                    <label for="inline-ssh-host-defaults" data-i18n="sshHostDefaultsLabel">SSH host defaults (OpenSSH directives)</label>
+                    <textarea id="inline-ssh-host-defaults" class="inline-form-control" rows="5" placeholder="# Applied to every exported host&#10;Port 22&#10;IdentityFile ~/.ssh/id_ed25519&#10;ProxyJump bastion.example.com"></textarea>
+                    <small data-i18n="sshHostDefaultsHelp">Use one OpenSSH directive per line. Empty lines and # comments are allowed.</small>
+                </div>
+                <div class="inline-settings-form-group">
+                    <label for="inline-ssh-export-format" data-i18n="sshExportFormatLabel">Export format</label>
+                    <select id="inline-ssh-export-format" class="inline-form-control">
+                        <option value="openssh" data-i18n="sshExportFormatOptionOpenSsh">OpenSSH config</option>
+                        <option value="putty" data-i18n="sshExportFormatOptionPutty">PuTTY .reg (Windows)</option>
+                        <option value="csv" data-i18n="sshExportFormatOptionCsv">CSV host list</option>
+                    </select>
+                    <small data-i18n="sshExportFormatHelp">Choose output format for download/copy.</small>
+                </div>
+
+                <div class="inline-settings-cluster-actions">
+                    <button id="inline-export-ssh-config-btn" type="button" class="inline-action-btn secondary" data-i18n="sshExportDownloadBtn">Download SSH Config</button>
+                    <button id="inline-copy-ssh-config-btn" type="button" class="inline-action-btn secondary" data-i18n="sshExportCopyBtn">Copy SSH Config</button>
+                </div>
+                </div>
+
                 <div class="inline-settings-subtab-panel" data-inline-settings-panel="help">
                 <div class="inline-help-card">
                     <h3 data-i18n="helpTab">Help</h3>
+
+                    <div id="inline-no-config-quickstart" class="inline-help-section hidden">
+                        <h4 data-i18n="helpQuickSetupTitle">Quick Setup</h4>
+                        <p class="inline-help-text" data-i18n="helpQuickSetupDescription">No cluster is configured yet. Use this quick flow to get started in under two minutes.</p>
+                        <ul class="inline-help-list">
+                            <li data-i18n="helpQuickSetupPointToken">Generate or copy your Proxmox API token.</li>
+                            <li data-i18n="helpQuickSetupPointClusterSettings">Go to Cluster settings and add URL, user, token ID, and secret.</li>
+                            <li data-i18n="helpQuickSetupPointImportBackup">Or import an existing encrypted backup file.</li>
+                        </ul>
+                        <div class="inline-help-links">
+                            <button id="inline-help-open-cluster-settings" type="button" class="inline-help-link" data-i18n="helpQuickSetupOpenClusterSettings">Open Cluster Settings</button>
+                            <button id="inline-help-open-backup-settings" type="button" class="inline-help-link" data-i18n="helpQuickSetupOpenBackupImport">Open Backup &amp; Import</button>
+                        </div>
+                    </div>
 
                     <div class="inline-help-section">
                         <h4 data-i18n="helpTokenSetupTitle">Proxmox API Token Setup</h4>
@@ -322,6 +408,7 @@
                             <li data-i18n="popupHelpRequiredPermissions">Required permissions: VM.Console and Sys.Audit (for SPICE also VM.Config.Options or PVEVMAdmin).</li>
                             <li data-i18n="popupHelpSelfSigned">Self-signed certificates: open your Proxmox URL in a browser tab once and trust the certificate.</li>
                             <li data-i18n="popupHelpSshAgent">SSH shells need a detected IP; for VMs ensure QEMU Guest Agent is enabled and installed.</li>
+                            <li data-i18n="popupHelpSshExport">SSH Config Export supports a global default user, per-host user overrides, and OpenSSH directive defaults.</li>
                         </ul>
                     </div>
 
@@ -401,15 +488,17 @@
             <div class="item-main">
                 <div class="status-indicator"></div>
                 <div class="info">
-                    <span class="name"></span>
-                    <div class="resource-subtitle">
-                        <span class="type-node"></span>
-                        <span class="node-id"></span>
-                        <span class="uptime hidden"></span>
+                    <div class="name-row">
+                        <span class="name"></span>
+                        <div class="name-chips">
+                            <span class="type-node"></span>
+                            <span class="node-id hidden"></span>
+                            <span class="tag ip hidden"></span>
+                        </div>
                     </div>
-                    <div class="meta-tags">
+                    <div class="resource-subtitle">
                         <span class="tag os hidden"></span>
-                        <span class="tag ip hidden"></span>
+                        <span class="uptime hidden"></span>
                     </div>
                     <div class="user-tags hidden"></div>
                 </div>

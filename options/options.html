@@ -17,6 +17,7 @@
             </div>
             <nav class="tabs">
                 <button class="tab-btn active" data-tab="general">General</button>
+                <button class="tab-btn" data-tab="extras" data-i18n="extrasTab">Extras</button>
                 <button class="tab-btn" data-tab="help">Help</button>
                 <button class="tab-btn" data-tab="about">About</button>
             </nav>
@@ -81,6 +82,20 @@
                     </select>
                 </div>
 
+                <div class="form-group">
+                    <label for="ui-scale-preset">UI Scale</label>
+                    <select id="ui-scale-preset" class="form-control">
+                        <option value="compact">Compact (90%)</option>
+                        <option value="standard">Standard (100%)</option>
+                        <option value="large">Large (115%)</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <div class="ui-scale-row">
+                        <input type="range" id="ui-scale-slider" min="85" max="140" step="1" value="100">
+                        <span id="ui-scale-value">100%</span>
+                    </div>
+                </div>
+
                 <div class="form-group separator">
                     <h3 data-i18n="tabManagement">Tab Management</h3>
                 </div>
@@ -106,6 +121,14 @@
                         <option value="floating" data-i18n="clickModeFloating">Open floating window</option>
                     </select>
                     <small data-i18n="defaultActionClickModeHelp">Choose whether clicking the extension icon opens side panel or floating window.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="expand-details-default" data-i18n="machineDetailsLabel">Machine details</label>
+                    <div class="input-with-icon" style="padding: 8px 0;">
+                        <input type="checkbox" id="expand-details-default" style="width: auto; margin-right: 8px;">
+                        <span data-i18n="expandDetailsDefault">Expand all details by default</span>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -172,6 +195,62 @@
             </div>
         </div>
 
+        <!-- Extras Tab -->
+        <div id="extras" class="tab-content">
+            <div class="card">
+                <div class="form-group separator">
+                    <h3 data-i18n="sshConfigExportTitle">SSH Config Export</h3>
+                </div>
+
+                <div class="form-group">
+                    <label for="ssh-default-user" data-i18n="sshDefaultUserLabel">Default SSH user (optional)</label>
+                    <input type="text" id="ssh-default-user" placeholder="root">
+                    <small data-i18n="sshDefaultUserHelp">Used when no per-host override is configured.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="ssh-default-key-select" data-i18n="sshDefaultKeyPathLabel">Default SSH key path (optional)</label>
+                    <select id="ssh-default-key-select" class="form-control"></select>
+                    <small data-i18n="sshDefaultKeyPathHelp">Used as IdentityFile in Host * when no IdentityFile exists in SSH host defaults.</small>
+                </div>
+
+                <div class="form-group">
+                    <label data-i18n="sshHostOverridesLabel">Per-host overrides</label>
+                    <div id="ssh-host-overrides-list" class="ssh-overrides-list"></div>
+                    <button id="add-ssh-host-override-btn" type="button" class="secondary-btn ssh-override-add-btn" data-i18n="sshAddOverrideBtn">Add Override</button>
+                    <small data-i18n="sshHostOverridesHelp">Choose host alias and optionally override user and SSH key path.</small>
+                </div>
+
+                <div class="form-group">
+                    <label data-i18n="sshKeyCatalogLabel">SSH key catalog</label>
+                    <div id="ssh-key-catalog-list" class="ssh-key-catalog-list"></div>
+                    <button id="add-ssh-key-catalog-btn" type="button" class="secondary-btn ssh-key-catalog-add-btn" data-i18n="sshAddKeyBtn">Add SSH Key</button>
+                    <small data-i18n="sshKeyCatalogHelp">Manage custom key entries. Auto-detected common keys are added automatically.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="ssh-host-defaults" data-i18n="sshHostDefaultsLabel">SSH host defaults (OpenSSH directives)</label>
+                    <textarea id="ssh-host-defaults" class="form-control" rows="7" placeholder="# Applied to every exported host&#10;Port 22&#10;IdentityFile ~/.ssh/id_ed25519&#10;ProxyJump bastion.example.com"></textarea>
+                    <small data-i18n="sshHostDefaultsHelp">Use one OpenSSH directive per line. Empty lines and # comments are allowed.</small>
+                </div>
+                <div class="form-group">
+                    <label for="ssh-export-format" data-i18n="sshExportFormatLabel">Export format</label>
+                    <select id="ssh-export-format" class="form-control">
+                        <option value="openssh" data-i18n="sshExportFormatOptionOpenSsh">OpenSSH config</option>
+                        <option value="putty" data-i18n="sshExportFormatOptionPutty">PuTTY .reg (Windows)</option>
+                        <option value="csv" data-i18n="sshExportFormatOptionCsv">CSV host list</option>
+                    </select>
+                    <small data-i18n="sshExportFormatHelp">Choose output format for download/copy.</small>
+                </div>
+
+                <div class="backup-actions-row">
+                    <button id="export-ssh-config-btn" class="secondary-btn" data-i18n="sshExportDownloadBtn">Download SSH Config</button>
+                    <button id="copy-ssh-config-btn" class="secondary-btn" data-i18n="sshExportCopyBtn">Copy SSH Config</button>
+                </div>
+                <div id="extras-status"></div>
+            </div>
+        </div>
+
         <!-- Help Tab -->
         <div id="help" class="tab-content">
             <div class="card">
@@ -186,6 +265,7 @@
                     <h4>SSH Shells</h4>
                     <p>The Shell icon appears for Linux-based VMs and LXC containers when a valid IP address is detected. It uses the <code>ssh://</code> protocol. Ensure your OS has a default handler for SSH links.</p>
                     <p><strong>Pro Tip:</strong> For VMs, make sure the <strong>QEMU Guest Agent</strong> is enabled in Proxmox and installed in the VM, otherwise the extension cannot detect the IP address.</p>
+                    <p><strong>SSH Config Export:</strong> In Settings, open the <strong>Extras</strong> tab to export Linux hosts as OpenSSH config, PuTTY <code>.reg</code>, or CSV. Per-host user/key overrides take precedence over global defaults.</p>
                 </div>
 
                 <div class="help-item">
@@ -260,7 +340,7 @@
             <div class="card about-card">
                 <img src="../store/proxmux_logo.png" alt="Logo" class="about-logo">
                 <h2>PROXMUX Manager</h2>
-                <p class="version">Version 1.2.0</p>
+                <p class="version">Version 1.2.1</p>
                 <p data-i18n="aboutProjectCredit">Created 2026 by d0dg3r (Joe Mild).</p>
                 <p data-i18n="aboutProjectHomage">This project is a tribute to Proxmox VE 0.9, first released on April 15, 2008 — and a small nod to the great milestones in computer history: Linux, Git, and Proxmox ;)</p>
                 <p>

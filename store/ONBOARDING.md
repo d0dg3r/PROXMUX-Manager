@@ -2,7 +2,7 @@
 
 This document contains all the text, metadata, and justifications required to submit PROXMUX Manager to the Chrome Web Store.
 
-Current release prep target: `v1.2.0` (align with `CHANGELOG.md` top entry before submission).
+Current release prep target: `v1.2.1` (align with `CHANGELOG.md` top entry before submission).
 
 ## 1. Store Metadata
 
@@ -29,7 +29,9 @@ Key Features:
 - Improved Monitoring: See VM/LXC status, OS types, and IP addresses at a glance.
 - Flexible Launch Modes: Open the extension in the Chrome Side Panel (default) or a persistent floating window.
 - Inline Advanced Settings: Open and edit settings directly inside the active extension view.
+- UI Scale Presets: Adjust readability with compact/standard/large presets and fine tuning slider.
 - Intelligent Consoles: Support for noVNC, SPICE (remote-viewer), and Node Shells.
+- SSH Export Formats: Export Linux hosts as OpenSSH config, PuTTY `.reg`, or CSV.
 - Modern Design: Selection of Dark, Light, or Follow System themes.
 - High Availability: Automatic cluster node discovery and seamless failover support.
 - Secure: API Tokens are stored locally and never leave your browser.

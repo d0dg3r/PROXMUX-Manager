@@ -4,7 +4,8 @@ import { buildInstallCommandForScripts } from '../lib/install-command.js';
 import {
     createEncryptedSettingsBackup,
     downloadEncryptedBackupFile,
-    importEncryptedSettingsFromText
+    importEncryptedSettingsFromText,
+    filterFavoriteIdsByExistingResources
 } from '../lib/settings-backup.js';
 import { openOrFocusFloatingWindow } from '../lib/window-launcher.js';
 import {
@@ -18,8 +19,50 @@ import {
     saveClustersState
 } from '../lib/cluster-store.js';
 import { FACTORY_DEFAULT_DISPLAY_SETTINGS, resetToFactoryDefaults } from '../lib/settings-reset.js';
+import {
+    buildMergedSshKeyCatalog,
+    buildSshExportFilename,
+    buildSshExportText,
+    collectSshExportTargets,
+    findSshKeyById,
+    findSshKeyIdByPath,
+    getSshExportMimeType,
+    normalizeSshExportFormat,
+    normalizeSshKeyCatalog,
+    normalizeSshHostDefaults,
+    normalizeSshHostOverrides,
+    normalizeSshKeyPath,
+    normalizeSshUser,
+    parseSshHostDefaultsText,
+    stringifySshHostDefaults
+} from '../lib/ssh-config-export.js';
+import {
+    getUiScalePresetId,
+    normalizeUiScale,
+    resolveUiScalePresetValue,
+    toUiScaleFactor,
+    UI_SCALE_DEFAULT
+} from '../lib/ui-scale.js';
 
 const LAST_BROWSER_WINDOW_ID_KEY = 'lastBrowserWindowId';
+const FAVORITES_TAB_ID = '__favorites__';
+const CLUSTER_COLOR_TOKENS = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'];
+
+function hashClusterId(value) {
+    const input = String(value || '');
+    let hash = 0;
+    for (let index = 0; index < input.length; index += 1) {
+        hash = ((hash << 5) - hash) + input.charCodeAt(index);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
+function getClusterColorToken(clusterId) {
+    if (!clusterId) return CLUSTER_COLOR_TOKENS[0];
+    const idx = hashClusterId(clusterId) % CLUSTER_COLOR_TOKENS.length;
+    return CLUSTER_COLOR_TOKENS[idx];
+}
 
 // Safely escape text for insertion into innerHTML to prevent XSS.
 function escapeHtml(str) {
@@ -42,6 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const themeToggleBtn = document.getElementById('theme-toggle-btn');
     const themeIcon = document.getElementById('theme-icon');
     const openSettingsOverlayBtn = document.getElementById('open-settings-overlay');
+    const openTokenHelpOverlayBtn = document.getElementById('open-token-help-overlay');
     const openImportOverlayBtn = document.getElementById('open-import-overlay');
     const mainViewContent = document.getElementById('main-view-content');
     const inlineSettingsView = document.getElementById('inline-settings-view');
@@ -56,8 +100,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const inlineApiTokenIdInput = document.getElementById('inline-api-tokenid');
     const inlineApiSecretInput = document.getElementById('inline-api-secret');
     const inlineThemeSelect = document.getElementById('inline-theme-select');
+    const inlineUiScalePresetSelect = document.getElementById('inline-ui-scale-preset');
+    const inlineUiScaleSlider = document.getElementById('inline-ui-scale-slider');
+    const inlineUiScaleValue = document.getElementById('inline-ui-scale-value');
     const inlineTabModeSelect = document.getElementById('inline-tab-mode-select');
     const inlineDefaultActionClickModeSelect = document.getElementById('inline-default-action-click-mode');
+    const inlineSshDefaultUserInput = document.getElementById('inline-ssh-default-user');
+    const inlineSshDefaultKeySelect = document.getElementById('inline-ssh-default-key-select');
+    const inlineSshHostOverridesList = document.getElementById('inline-ssh-host-overrides-list');
+    const inlineAddSshHostOverrideBtn = document.getElementById('inline-add-ssh-host-override-btn');
+    const inlineSshKeyCatalogList = document.getElementById('inline-ssh-key-catalog-list');
+    const inlineAddSshKeyCatalogBtn = document.getElementById('inline-add-ssh-key-catalog-btn');
+    const inlineSshHostDefaultsInput = document.getElementById('inline-ssh-host-defaults');
+    const inlineSshExportFormatSelect = document.getElementById('inline-ssh-export-format');
+    const inlineExportSshConfigBtn = document.getElementById('inline-export-ssh-config-btn');
+    const inlineCopySshConfigBtn = document.getElementById('inline-copy-ssh-config-btn');
     const inlineToggleSecretBtn = document.getElementById('inline-toggle-secret');
     const inlineEyeIcon = document.getElementById('inline-eye-icon');
     const inlineSaveSettingsBtn = document.getElementById('inline-save-settings-btn');
@@ -76,6 +133,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const inlineSettingsStatus = document.getElementById('inline-settings-status');
     const inlineAboutEasterEggBtn = document.getElementById('inline-about-easter-egg-btn');
     const inlineAboutLegacyWrap = document.getElementById('inline-about-legacy-wrap');
+    const inlineNoConfigQuickstart = document.getElementById('inline-no-config-quickstart');
+    const inlineHelpOpenClusterSettingsBtn = document.getElementById('inline-help-open-cluster-settings');
+    const inlineHelpOpenBackupSettingsBtn = document.getElementById('inline-help-open-backup-settings');
     const template = document.getElementById('resource-item-template');
     const currentView = new URLSearchParams(window.location.search).get('view') || 'none';
     let startupWindowType = 'unknown';
@@ -131,6 +191,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function applyUiScale(scaleValue) {
+        const normalized = normalizeUiScale(scaleValue, UI_SCALE_DEFAULT);
+        document.documentElement.style.setProperty('--ui-scale', toUiScaleFactor(normalized));
+        if (inlineUiScaleValue) {
+            inlineUiScaleValue.textContent = `${normalized}%`;
+        }
+        return normalized;
+    }
+
+    function syncInlineUiScaleControls(scaleValue) {
+        const normalized = applyUiScale(scaleValue);
+        if (inlineUiScaleSlider) {
+            inlineUiScaleSlider.value = String(normalized);
+        }
+        if (inlineUiScalePresetSelect) {
+            inlineUiScalePresetSelect.value = getUiScalePresetId(normalized);
+        }
+        return normalized;
+    }
+
     function updateThemeIcon(theme) {
         if (!themeIcon) return;
         // Icon represents the TARGET theme (Action)
@@ -154,10 +234,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const pendingStatusOverrides = new Map();
     const tagFiltersContainer = document.getElementById('tag-filters');
     const tagFiltersSection = tagFiltersContainer?.closest('.filter-section-tags');
+    const DEFAULT_TYPE_FILTERS = ['node', 'qemu', 'lxc'];
+    const DEFAULT_STATUS_FILTERS = ['running', 'stopped'];
     let activeFilters = {
-        type: 'all', // 'all', 'node', 'qemu', 'lxc'
-        status: 'all', // 'all', 'running', 'stopped'
-        tag: null // 'null' or string
+        types: [...DEFAULT_TYPE_FILTERS],
+        statuses: [...DEFAULT_STATUS_FILTERS],
+        tag: null
     };
     const searchInput = document.getElementById('search-input');
     const searchClearBtn = document.getElementById('search-clear-btn');
@@ -166,6 +248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const displaySettingsBtn = document.getElementById('display-settings-btn');
     const collapsibleFilters = document.getElementById('collapsible-filters');
     const displaySettingsMenu = document.getElementById('display-settings-menu');
+    const expandDetailsDefaultCheckbox = document.getElementById('expand-details-default');
     const scriptsPanel = document.querySelector('.scripts-panel');
     const scriptsBody = document.getElementById('scripts-body');
     const scriptsToggleBtn = document.getElementById('scripts-toggle-btn');
@@ -183,6 +266,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     const scriptsGuideClose = document.getElementById('scripts-guide-close');
     const scriptsGuideOpenPage = document.getElementById('scripts-guide-open-page');
     const debugStatus = document.getElementById('debug-status');
+
+    function normalizeActiveFilters(input) {
+        const fallback = {
+            types: [...DEFAULT_TYPE_FILTERS],
+            statuses: [...DEFAULT_STATUS_FILTERS],
+            tag: null
+        };
+        if (!input || typeof input !== 'object') return fallback;
+
+        const allowedTypes = new Set(DEFAULT_TYPE_FILTERS);
+        const allowedStatuses = new Set(DEFAULT_STATUS_FILTERS);
+
+        let types = Array.isArray(input.types) ? input.types : null;
+        let statuses = Array.isArray(input.statuses) ? input.statuses : null;
+
+        // Backward compatibility for legacy single-value shape.
+        if (!types && typeof input.type === 'string') {
+            types = input.type === 'all' ? [...DEFAULT_TYPE_FILTERS] : [input.type];
+        }
+        if (!statuses && typeof input.status === 'string') {
+            statuses = input.status === 'all' ? [...DEFAULT_STATUS_FILTERS] : [input.status];
+        }
+
+        const normalizedTypes = (types || [...DEFAULT_TYPE_FILTERS]).filter((value, idx, arr) =>
+            allowedTypes.has(value) && arr.indexOf(value) === idx
+        );
+        const normalizedStatuses = (statuses || [...DEFAULT_STATUS_FILTERS]).filter((value, idx, arr) =>
+            allowedStatuses.has(value) && arr.indexOf(value) === idx
+        );
+
+        return {
+            types: normalizedTypes,
+            statuses: normalizedStatuses,
+            tag: typeof input.tag === 'string' && input.tag.trim() ? input.tag : null
+        };
+    }
+
+    function syncFilterPillsFromState() {
+        filterPills.forEach((pill) => {
+            const type = pill.getAttribute('data-filter-type');
+            const status = pill.getAttribute('data-filter-status');
+            if (type) {
+                pill.classList.toggle('active', activeFilters.types.includes(type));
+                return;
+            }
+            if (status) {
+                pill.classList.toggle('active', activeFilters.statuses.includes(status));
+            }
+        });
+    }
+
 
     let displaySettings = {
         uptime: true,
@@ -202,11 +336,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         apiUser: 'api-admin@pve',
         apiTokenId: 'full-access',
         theme: 'auto',
+        uiScale: UI_SCALE_DEFAULT,
         consoleTabMode: 'duplicate',
+        sshDefaultUser: '',
+        sshDefaultKeyPath: '',
+        sshSelectedDefaultKeyId: '',
+        sshKeyCatalog: [],
+        sshHostOverrides: {},
+        sshHostDefaults: {
+            ServerAliveInterval: '30',
+            ServerAliveCountMax: '3'
+        },
         defaultActionClickMode: 'sidepanel'
     };
     
     let currentExpandedId = null;
+    let expandDetailsByDefault = false;
+    let favoriteResourceIds = new Set();
     let scriptsCatalog = [];
     let selectedScriptSlugs = new Set();
     let scriptDetailsCache = new Map();
@@ -216,6 +362,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentGuidePageUrl = '';
     const activePasteFlows = new Set();
     let inlineImportOnlyNoConfigMode = false;
+    let inlineNoConfigHelpMode = false;
+    let isInlineImportingSettings = false;
+    let inlineSshAliasOptions = [];
+    let inlineMergedSshKeyCatalog = [];
     const AUTO_PASTE_TIMEOUT_MS = 1500;
     const NEW_TAB_READY_TIMEOUT_MS = 650;
     const NEW_TAB_SETTLE_DELAY_MS = 250;
@@ -229,6 +379,359 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             inlineSettingsStatus.style.color = 'var(--text-secondary)';
         }
+    }
+
+    function mergeHostOverridesWithLegacy(hostOverrides, userOverrides) {
+        const merged = { ...normalizeSshHostOverrides(hostOverrides) };
+        const legacy = (userOverrides && typeof userOverrides === 'object' && !Array.isArray(userOverrides))
+            ? userOverrides
+            : {};
+        Object.entries(legacy).forEach(([alias, user]) => {
+            const aliasKey = String(alias || '').trim();
+            const normalizedUser = normalizeSshUser(user);
+            if (!aliasKey || !normalizedUser) return;
+            merged[aliasKey] = { ...(merged[aliasKey] || {}), user: normalizedUser };
+        });
+        return merged;
+    }
+
+    function collectInlineLegacyKeyPaths(defaultKeyPath, hostOverrides) {
+        const paths = [];
+        const normalizedDefaultPath = normalizeSshKeyPath(defaultKeyPath);
+        if (normalizedDefaultPath) paths.push(normalizedDefaultPath);
+        Object.values(normalizeSshHostOverrides(hostOverrides)).forEach((override) => {
+            const normalizedPath = normalizeSshKeyPath(override?.keyPath);
+            if (normalizedPath) paths.push(normalizedPath);
+        });
+        return paths;
+    }
+
+    function rebuildInlineMergedSshKeyCatalog(manualCatalog = [], legacyPaths = []) {
+        inlineMergedSshKeyCatalog = buildMergedSshKeyCatalog(normalizeSshKeyCatalog(manualCatalog), legacyPaths);
+        return inlineMergedSshKeyCatalog;
+    }
+
+    function buildInlineKeyOptionLabel(entry) {
+        return `${entry.label} (${entry.path})`;
+    }
+
+    function buildInlineManualKeyId(pathValue) {
+        const normalized = normalizeSshKeyPath(pathValue)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        return normalized ? `manual-${normalized}` : 'manual-key';
+    }
+
+    function buildInlineSshKeySelect(selectedKeyId = '') {
+        const select = document.createElement('select');
+        select.className = 'inline-form-control inline-ssh-override-key-select';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Use global/default';
+        select.appendChild(placeholder);
+        inlineMergedSshKeyCatalog.forEach((entry) => {
+            const option = document.createElement('option');
+            option.value = entry.id;
+            option.textContent = buildInlineKeyOptionLabel(entry);
+            select.appendChild(option);
+        });
+        select.value = selectedKeyId || '';
+        return select;
+    }
+
+    function renderInlineDefaultSshKeySelect(selectedKeyId = '') {
+        if (!inlineSshDefaultKeySelect) return;
+        inlineSshDefaultKeySelect.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'None';
+        inlineSshDefaultKeySelect.appendChild(placeholder);
+        inlineMergedSshKeyCatalog.forEach((entry) => {
+            const option = document.createElement('option');
+            option.value = entry.id;
+            option.textContent = buildInlineKeyOptionLabel(entry);
+            inlineSshDefaultKeySelect.appendChild(option);
+        });
+        inlineSshDefaultKeySelect.value = selectedKeyId || '';
+    }
+
+    function createInlineSshKeyCatalogRow(entry = {}) {
+        if (!inlineSshKeyCatalogList) return;
+        const row = document.createElement('div');
+        row.className = 'inline-ssh-key-catalog-row';
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'inline-form-control inline-ssh-key-catalog-label-input';
+        labelInput.placeholder = 'My key';
+        labelInput.value = String(entry.label || '').trim();
+        const pathInput = document.createElement('input');
+        pathInput.type = 'text';
+        pathInput.className = 'inline-form-control inline-ssh-key-catalog-path-input';
+        pathInput.placeholder = '~/.ssh/id_ed25519';
+        pathInput.value = normalizeSshKeyPath(entry.path || '');
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'inline-action-btn secondary';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
+            row.remove();
+            refreshInlineSshKeySelectors();
+        });
+        labelInput.addEventListener('input', refreshInlineSshKeySelectors);
+        pathInput.addEventListener('input', refreshInlineSshKeySelectors);
+        row.append(labelInput, pathInput, removeBtn);
+        inlineSshKeyCatalogList.appendChild(row);
+    }
+
+    function readInlineManualSshKeyCatalogFromRows() {
+        const rows = inlineSshKeyCatalogList?.querySelectorAll('.inline-ssh-key-catalog-row') || [];
+        const entries = [];
+        const seenPaths = new Set();
+        rows.forEach((row, index) => {
+            const label = String(row.querySelector('.inline-ssh-key-catalog-label-input')?.value || '').trim();
+            const path = normalizeSshKeyPath(row.querySelector('.inline-ssh-key-catalog-path-input')?.value || '');
+            if (!path) return;
+            const normalizedPath = path.toLowerCase();
+            if (seenPaths.has(normalizedPath)) {
+                throw new Error(`Duplicate SSH key path in catalog: ${path}`);
+            }
+            seenPaths.add(normalizedPath);
+            entries.push({
+                id: buildInlineManualKeyId(path) || `manual-key-${index + 1}`,
+                label: label || path,
+                path,
+                source: 'manual'
+            });
+        });
+        return normalizeSshKeyCatalog(entries);
+    }
+
+    function renderInlineManualSshKeyCatalog(catalog = []) {
+        if (!inlineSshKeyCatalogList) return;
+        inlineSshKeyCatalogList.innerHTML = '';
+        normalizeSshKeyCatalog(catalog).forEach((entry) => createInlineSshKeyCatalogRow(entry));
+        if (!inlineSshKeyCatalogList.childElementCount) {
+            createInlineSshKeyCatalogRow({});
+        }
+    }
+
+    function buildInlineAliasSelect(selectedAlias = '') {
+        const select = document.createElement('select');
+        select.className = 'inline-form-control inline-ssh-override-alias-select';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select host alias';
+        select.appendChild(placeholder);
+        const options = Array.from(new Set([...(inlineSshAliasOptions || []), selectedAlias].filter(Boolean)))
+            .sort((a, b) => a.localeCompare(b));
+        options.forEach((alias) => {
+            const option = document.createElement('option');
+            option.value = alias;
+            option.textContent = alias;
+            select.appendChild(option);
+        });
+        select.value = selectedAlias || '';
+        return select;
+    }
+
+    function createInlineSshOverrideRow(override = {}) {
+        if (!inlineSshHostOverridesList) return;
+        const row = document.createElement('div');
+        row.className = 'inline-ssh-override-row';
+
+        const aliasSelect = buildInlineAliasSelect(String(override.alias || '').trim());
+
+        const userInput = document.createElement('input');
+        userInput.type = 'text';
+        userInput.className = 'inline-form-control inline-ssh-override-user-input';
+        userInput.placeholder = 'ubuntu';
+        userInput.value = normalizeSshUser(override.user || '');
+
+        const selectedKeyId = String(
+            override.keyId || findSshKeyIdByPath(inlineMergedSshKeyCatalog, override.keyPath) || ''
+        ).trim();
+        const keySelect = buildInlineSshKeySelect(selectedKeyId);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'inline-action-btn secondary';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => row.remove());
+
+        row.append(aliasSelect, userInput, keySelect, removeBtn);
+        inlineSshHostOverridesList.appendChild(row);
+    }
+
+    function readInlineHostOverridesFromRows() {
+        const next = {};
+        const rows = inlineSshHostOverridesList?.querySelectorAll('.inline-ssh-override-row') || [];
+        rows.forEach((row) => {
+            const alias = String(row.querySelector('.inline-ssh-override-alias-select')?.value || '').trim();
+            const user = normalizeSshUser(row.querySelector('.inline-ssh-override-user-input')?.value || '');
+            const keyId = String(row.querySelector('.inline-ssh-override-key-select')?.value || '').trim();
+            const keyPath = normalizeSshKeyPath(findSshKeyById(inlineMergedSshKeyCatalog, keyId)?.path || '');
+            if (!alias || (!user && !keyPath && !keyId)) return;
+            const entry = {};
+            if (user) entry.user = user;
+            if (keyId) entry.keyId = keyId;
+            if (keyPath) entry.keyPath = keyPath;
+            next[alias] = entry;
+        });
+        return next;
+    }
+
+    function renderInlineSshOverrides(overrides = {}) {
+        if (!inlineSshHostOverridesList) return;
+        inlineSshHostOverridesList.innerHTML = '';
+        const entries = Object.entries(normalizeSshHostOverrides(overrides))
+            .sort(([a], [b]) => a.localeCompare(b));
+        entries.forEach(([alias, value]) => {
+            createInlineSshOverrideRow({
+                alias,
+                user: value.user,
+                keyPath: value.keyPath,
+                keyId: value.keyId
+            });
+        });
+        if (!entries.length) {
+            createInlineSshOverrideRow({});
+        }
+    }
+
+    async function refreshInlineSshAliasOptions() {
+        try {
+            const { targets } = await collectSshExportTargets(clusters, (cluster) => (
+                new ProxmoxAPI(cluster.proxmoxUrl, cluster.apiToken, cluster.failoverUrls || [])
+            ));
+            const discovered = (Array.isArray(targets) ? targets : []).map((target) => target.alias);
+            const existingRows = inlineSshHostOverridesList?.querySelectorAll('.inline-ssh-override-row') || [];
+            const selectedAliases = Array.from(existingRows)
+                .map((row) => String(row.querySelector('.inline-ssh-override-alias-select')?.value || '').trim())
+                .filter(Boolean);
+            inlineSshAliasOptions = Array.from(new Set([...discovered, ...selectedAliases])).sort((a, b) => a.localeCompare(b));
+            existingRows.forEach((row) => {
+                const currentAlias = String(row.querySelector('.inline-ssh-override-alias-select')?.value || '').trim();
+                const nextSelect = buildInlineAliasSelect(currentAlias);
+                const oldSelect = row.querySelector('.inline-ssh-override-alias-select');
+                if (oldSelect) {
+                    row.replaceChild(nextSelect, oldSelect);
+                }
+            });
+        } catch (_error) {
+            // Keep current options on fetch failure.
+        }
+    }
+
+    function refreshInlineSshKeySelectors() {
+        const selectedDefaultKeyId = String(inlineSshDefaultKeySelect?.value || '').trim();
+        const selectedOverrideKeyIds = Array.from(inlineSshHostOverridesList?.querySelectorAll('.inline-ssh-override-row') || [])
+            .map((row) => String(row.querySelector('.inline-ssh-override-key-select')?.value || '').trim());
+        let manualCatalog = [];
+        try {
+            manualCatalog = readInlineManualSshKeyCatalogFromRows();
+        } catch (_error) {
+            manualCatalog = normalizeSshKeyCatalog([]);
+        }
+        rebuildInlineMergedSshKeyCatalog(manualCatalog, []);
+        renderInlineDefaultSshKeySelect(selectedDefaultKeyId);
+        const rows = inlineSshHostOverridesList?.querySelectorAll('.inline-ssh-override-row') || [];
+        rows.forEach((row, index) => {
+            const currentKeyId = selectedOverrideKeyIds[index] || '';
+            const nextSelect = buildInlineSshKeySelect(currentKeyId);
+            const oldSelect = row.querySelector('.inline-ssh-override-key-select');
+            if (oldSelect) {
+                row.replaceChild(nextSelect, oldSelect);
+            }
+        });
+    }
+
+    function getInlineSshSettingsFromInputs() {
+        const sshDefaultUser = normalizeSshUser(inlineSshDefaultUserInput?.value || '');
+        const sshKeyCatalog = readInlineManualSshKeyCatalogFromRows();
+        const sshSelectedDefaultKeyId = String(inlineSshDefaultKeySelect?.value || '').trim();
+        rebuildInlineMergedSshKeyCatalog(sshKeyCatalog, []);
+        const sshDefaultKeyPath = normalizeSshKeyPath(
+            findSshKeyById(inlineMergedSshKeyCatalog, sshSelectedDefaultKeyId)?.path || ''
+        );
+        const sshHostOverrides = normalizeSshHostOverrides(readInlineHostOverridesFromRows());
+        const sshUserOverrides = {};
+        Object.entries(sshHostOverrides).forEach(([alias, override]) => {
+            if (!override?.user) return;
+            sshUserOverrides[alias] = override.user;
+        });
+        const sshHostDefaults = normalizeSshHostDefaults(
+            parseSshHostDefaultsText(inlineSshHostDefaultsInput?.value || '')
+        );
+        return {
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults
+        };
+    }
+
+    async function downloadTextFile(content, filename, mimeType = 'text/plain;charset=utf-8') {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        try {
+            await new Promise((resolve, reject) => {
+                chrome.downloads.download(
+                    { url, filename, saveAs: true, conflictAction: 'uniquify' },
+                    (downloadId) => {
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                            return;
+                        }
+                        if (!downloadId) {
+                            reject(new Error('Download failed.'));
+                            return;
+                        }
+                        resolve(downloadId);
+                    }
+                );
+            });
+        } finally {
+            setTimeout(() => URL.revokeObjectURL(url), 1500);
+        }
+    }
+
+    function getSshExportFormatLabel(format) {
+        if (format === 'putty') return 'PuTTY registry file';
+        if (format === 'csv') return 'SSH host CSV';
+        return 'SSH config';
+    }
+
+    async function buildInlineSshConfig() {
+        const { targets, errors } = await collectSshExportTargets(clusters, (cluster) => (
+            new ProxmoxAPI(cluster.proxmoxUrl, cluster.apiToken, cluster.failoverUrls || [])
+        ));
+        if (!targets.length) {
+            throw new Error('No Linux hosts with detected IP were found for SSH export.');
+        }
+        const sshSettings = getInlineSshSettingsFromInputs();
+        const exportFormat = normalizeSshExportFormat(inlineSshExportFormatSelect?.value || 'openssh');
+        const text = buildSshExportText(targets, exportFormat, {
+            defaultUser: sshSettings.sshDefaultUser,
+            defaultKeyPath: sshSettings.sshDefaultKeyPath,
+            selectedDefaultKeyId: sshSettings.sshSelectedDefaultKeyId,
+            keyCatalog: sshSettings.sshKeyCatalog,
+            hostOverrides: sshSettings.sshHostOverrides,
+            userOverrides: sshSettings.sshUserOverrides,
+            hostDefaults: sshSettings.sshHostDefaults
+        });
+        return {
+            text,
+            targetCount: targets.length,
+            errorCount: errors.length,
+            exportFormat,
+            filename: buildSshExportFilename(exportFormat),
+            mimeType: getSshExportMimeType(exportFormat),
+            ...sshSettings
+        };
     }
 
     function attachClearButtonsToInputs(inputIds) {
@@ -270,6 +773,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         'inline-proxmox-url',
         'inline-api-user',
         'inline-api-tokenid',
+        'inline-ssh-default-user',
+        'inline-ssh-host-defaults',
         'inline-export-password',
         'inline-export-password-confirm',
         'inline-import-password'
@@ -288,19 +793,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     function updateClusterTabsVisibility() {
         if (!clusterTabs) return;
         const hasClusters = getEnabledClusters().length > 0;
+        const hasConfigured = hasConfiguredCluster();
         const isSettingsActive = document.body.classList.contains('settings-view-active');
-        clusterTabs.classList.toggle('hidden', !hasClusters || isSettingsActive);
+        clusterTabs.classList.toggle('hidden', !hasClusters || !hasConfigured || isSettingsActive);
     }
 
     function setActiveInlineSettingsSubtab(tab) {
-        const targetTab = ['cluster', 'backup', 'help', 'about'].includes(tab) ? tab : 'cluster';
+        const targetTab = ['cluster', 'backup', 'extras', 'help', 'about'].includes(tab) ? tab : 'cluster';
         inlineSettingsSubtabButtons.forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.inlineSettingsSubtab === targetTab);
         });
         inlineSettingsSubtabPanels.forEach((panel) => {
             panel.classList.toggle('active', panel.dataset.inlineSettingsPanel === targetTab);
         });
+        if (targetTab === 'extras') {
+            refreshInlineSshKeySelectors();
+            refreshInlineSshAliasOptions();
+        }
         inlineSettingsActions?.classList.toggle('hidden', targetTab !== 'cluster');
+        const showQuickstart = Boolean(
+            inlineNoConfigQuickstart &&
+            targetTab === 'help' &&
+            inlineNoConfigHelpMode &&
+            !hasConfiguredCluster()
+        );
+        inlineNoConfigQuickstart?.classList.toggle('hidden', !showQuickstart);
     }
 
     function resetAboutEasterEgg() {
@@ -404,6 +921,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function getCurrentScopeId() {
         if (activeClusterTabId === ALL_CLUSTERS_TAB_ID) return ALL_CLUSTERS_TAB_ID;
+        if (activeClusterTabId === FAVORITES_TAB_ID) return FAVORITES_TAB_ID;
         return activeClusterTabId || activeClusterId || 'none';
     }
 
@@ -488,23 +1006,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         inlineApiTokenIdInput.value = editableCluster?.apiTokenId || DEFAULT_SETTINGS.apiTokenId;
         inlineApiSecretInput.value = editableCluster?.apiSecret || '';
         inlineThemeSelect.value = settings.theme || 'auto';
+        syncInlineUiScaleControls(settings.uiScale ?? DEFAULT_SETTINGS.uiScale);
         inlineTabModeSelect.value = settings.consoleTabMode || 'duplicate';
+        inlineSshDefaultUserInput.value = normalizeSshUser(settings.sshDefaultUser || DEFAULT_SETTINGS.sshDefaultUser);
+        const mergedOverrides = mergeHostOverridesWithLegacy(settings.sshHostOverrides, settings.sshUserOverrides);
+        const legacyPaths = collectInlineLegacyKeyPaths(settings.sshDefaultKeyPath, mergedOverrides);
+        rebuildInlineMergedSshKeyCatalog(settings.sshKeyCatalog || DEFAULT_SETTINGS.sshKeyCatalog, legacyPaths);
+        renderInlineManualSshKeyCatalog(settings.sshKeyCatalog || DEFAULT_SETTINGS.sshKeyCatalog);
+        const selectedDefaultKeyId = String(settings.sshSelectedDefaultKeyId || '').trim()
+            || findSshKeyIdByPath(inlineMergedSshKeyCatalog, settings.sshDefaultKeyPath || '');
+        renderInlineDefaultSshKeySelect(selectedDefaultKeyId);
+        renderInlineSshOverrides(mergedOverrides);
+        inlineSshHostDefaultsInput.value = stringifySshHostDefaults(settings.sshHostDefaults || DEFAULT_SETTINGS.sshHostDefaults);
         inlineDefaultActionClickModeSelect.value = ['sidepanel', 'floating'].includes(settings.defaultActionClickMode)
             ? settings.defaultActionClickMode
             : 'sidepanel';
         renderInlineClusterSelect();
         updateInlineInputClearButtons();
         updateInlineImportOnlyVisibility();
+        refreshInlineSshAliasOptions();
     }
 
     function openInlineSettingsView(trigger, options = {}) {
         const scriptsPanel = document.querySelector('.scripts-panel');
         const scriptsInsideMain = Boolean(scriptsPanel && mainViewContent && mainViewContent.contains(scriptsPanel));
         inlineImportOnlyNoConfigMode = Boolean(options.importOnlyWhenNoConfig && options.targetSubtab === 'backup');
+        inlineNoConfigHelpMode = Boolean(options.onboardingNoConfigHelp && options.targetSubtab === 'help');
         resetAboutEasterEgg();
         populateInlineSettingsFields();
         setActiveInlineSettingsSubtab(
-            options.targetSubtab === 'backup' || options.targetSubtab === 'help' || options.targetSubtab === 'about'
+            options.targetSubtab === 'backup' || options.targetSubtab === 'extras' || options.targetSubtab === 'help' || options.targetSubtab === 'about'
                 ? options.targetSubtab
                 : 'cluster'
         );
@@ -514,6 +1045,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function closeInlineSettingsView() {
         inlineImportOnlyNoConfigMode = false;
+        inlineNoConfigHelpMode = false;
         updateInlineImportOnlyVisibility();
         resetAboutEasterEgg();
         resetInlineResetConfirmation();
@@ -558,31 +1090,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             const status = pill.getAttribute('data-filter-status');
 
             if (type) {
-                // If clicking type, clear existing type indicators
-                filterPills.forEach(p => {
-                    if (p.hasAttribute('data-filter-type')) p.classList.remove('active');
-                });
-                activeFilters.type = type;
-            } else if (status) {
-                // Toggle status filter if clicking same status, otherwise switch
-                if (activeFilters.status === status) {
-                    activeFilters.status = 'all';
-                    pill.classList.remove('active');
+                if (activeFilters.types.includes(type)) {
+                    activeFilters.types = activeFilters.types.filter((value) => value !== type);
                 } else {
-                    filterPills.forEach(p => {
-                        if (p.hasAttribute('data-filter-status')) p.classList.remove('active');
-                    });
-                    activeFilters.status = status;
+                    activeFilters.types = [...activeFilters.types, type];
+                }
+            } else if (status) {
+                if (activeFilters.statuses.includes(status)) {
+                    activeFilters.statuses = activeFilters.statuses.filter((value) => value !== status);
+                } else {
+                    activeFilters.statuses = [...activeFilters.statuses, status];
                 }
             }
 
-            // Always ensure the correct type pill is active
-            if (type) pill.classList.add('active');
-            else {
-                // If toggled status, ensure status pill is active if not 'all'
-                if (activeFilters.status !== 'all') pill.classList.add('active');
-            }
-
+            syncFilterPillsFromState();
             writeScopedUiValue('lastFilters', JSON.stringify(activeFilters));
             filterAndRender();
         });
@@ -624,9 +1145,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         resetInlineResetConfirmation();
         openInlineSettingsView('overlay_settings_button', { targetSubtab: 'cluster' });
     });
+    openTokenHelpOverlayBtn?.addEventListener('click', () => {
+        resetInlineResetConfirmation();
+        openInlineSettingsView('overlay_token_help_button', { targetSubtab: 'help', onboardingNoConfigHelp: true });
+    });
     openImportOverlayBtn?.addEventListener('click', () => {
         resetInlineResetConfirmation();
         openInlineSettingsView('overlay_import_button', { targetSubtab: 'backup', importOnlyWhenNoConfig: true });
+    });
+    inlineHelpOpenClusterSettingsBtn?.addEventListener('click', () => {
+        setActiveInlineSettingsSubtab('cluster');
+        inlineProxmoxUrlInput?.focus();
+    });
+    inlineHelpOpenBackupSettingsBtn?.addEventListener('click', () => {
+        setActiveInlineSettingsSubtab('backup');
     });
     refreshBtn.addEventListener('click', () => {
         removeScopedUiValue('lastActiveResource');
@@ -688,6 +1220,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         applyTheme(inlineThemeSelect.value);
     });
 
+    inlineUiScalePresetSelect?.addEventListener('change', async () => {
+        if (inlineUiScalePresetSelect.value === 'custom') return;
+        const nextScale = resolveUiScalePresetValue(
+            inlineUiScalePresetSelect.value,
+            settings.uiScale ?? DEFAULT_SETTINGS.uiScale
+        );
+        const normalized = syncInlineUiScaleControls(nextScale);
+        settings = { ...settings, uiScale: normalized };
+        await chrome.storage.local.set({ uiScale: normalized });
+    });
+
+    inlineUiScaleSlider?.addEventListener('input', async () => {
+        const normalized = syncInlineUiScaleControls(inlineUiScaleSlider.value);
+        settings = { ...settings, uiScale: normalized };
+        await chrome.storage.local.set({ uiScale: normalized });
+    });
+
+    if (chrome?.storage?.onChanged?.addListener) {
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName !== 'local') return;
+            if (!Object.prototype.hasOwnProperty.call(changes, 'uiScale')) return;
+            const nextScale = changes.uiScale?.newValue;
+            const normalized = syncInlineUiScaleControls(nextScale ?? DEFAULT_SETTINGS.uiScale);
+            settings = { ...settings, uiScale: normalized };
+        });
+    }
+
     inlineSettingsSubtabButtons.forEach((button) => {
         button.addEventListener('click', () => {
             if (button.dataset.inlineSettingsSubtab !== 'backup') {
@@ -727,7 +1286,118 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    inlineImportSettingsBtn?.addEventListener('click', async () => {
+    inlineExportSshConfigBtn?.addEventListener('click', async () => {
+        resetInlineResetConfirmation();
+        setInlineSettingsStatus('Building SSH config...', 'info');
+        try {
+            const {
+                text,
+                targetCount,
+                errorCount,
+                sshDefaultUser,
+                sshDefaultKeyPath,
+                sshSelectedDefaultKeyId,
+                sshKeyCatalog,
+                sshHostOverrides,
+                sshUserOverrides,
+                sshHostDefaults,
+                exportFormat,
+                filename,
+                mimeType
+            } = await buildInlineSshConfig();
+            await chrome.storage.local.set({
+                sshDefaultUser,
+                sshDefaultKeyPath,
+                sshSelectedDefaultKeyId,
+                sshKeyCatalog,
+                sshHostOverrides,
+                sshUserOverrides,
+                sshHostDefaults
+            });
+            settings = {
+                ...settings,
+                sshDefaultUser,
+                sshDefaultKeyPath,
+                sshSelectedDefaultKeyId,
+                sshKeyCatalog,
+                sshHostOverrides,
+                sshUserOverrides,
+                sshHostDefaults
+            };
+            await downloadTextFile(text, filename, mimeType);
+            const formatLabel = getSshExportFormatLabel(exportFormat);
+            setInlineSettingsStatus(
+                errorCount > 0
+                    ? `${formatLabel} downloaded (${targetCount} hosts, ${errorCount} cluster errors).`
+                    : `${formatLabel} downloaded (${targetCount} hosts).`,
+                'success'
+            );
+        } catch (error) {
+            setInlineSettingsStatus(`SSH export failed: ${error.message || 'Unknown error.'}`, 'error');
+        }
+    });
+
+    inlineCopySshConfigBtn?.addEventListener('click', async () => {
+        resetInlineResetConfirmation();
+        setInlineSettingsStatus('Building SSH config...', 'info');
+        try {
+            const {
+                text,
+                targetCount,
+                errorCount,
+                sshDefaultUser,
+                sshDefaultKeyPath,
+                sshSelectedDefaultKeyId,
+                sshKeyCatalog,
+                sshHostOverrides,
+                sshUserOverrides,
+                sshHostDefaults,
+                exportFormat
+            } = await buildInlineSshConfig();
+            await chrome.storage.local.set({
+                sshDefaultUser,
+                sshDefaultKeyPath,
+                sshSelectedDefaultKeyId,
+                sshKeyCatalog,
+                sshHostOverrides,
+                sshUserOverrides,
+                sshHostDefaults
+            });
+            settings = {
+                ...settings,
+                sshDefaultUser,
+                sshDefaultKeyPath,
+                sshSelectedDefaultKeyId,
+                sshKeyCatalog,
+                sshHostOverrides,
+                sshUserOverrides,
+                sshHostDefaults
+            };
+            await navigator.clipboard.writeText(text);
+            const formatLabel = getSshExportFormatLabel(exportFormat);
+            setInlineSettingsStatus(
+                errorCount > 0
+                    ? `${formatLabel} copied (${targetCount} hosts, ${errorCount} cluster errors).`
+                    : `${formatLabel} copied (${targetCount} hosts).`,
+                'success'
+            );
+        } catch (error) {
+            setInlineSettingsStatus(`SSH copy failed: ${error.message || 'Unknown error.'}`, 'error');
+        }
+    });
+
+    inlineAddSshHostOverrideBtn?.addEventListener('click', async () => {
+        createInlineSshOverrideRow({});
+        refreshInlineSshKeySelectors();
+        await refreshInlineSshAliasOptions();
+    });
+    inlineAddSshKeyCatalogBtn?.addEventListener('click', () => {
+        createInlineSshKeyCatalogRow({});
+        refreshInlineSshKeySelectors();
+    });
+
+    async function runInlineImportSettings() {
+        if (isInlineImportingSettings) return;
         resetInlineResetConfirmation();
         const selectedFile = inlineImportFileInput.files?.[0];
         if (!selectedFile) {
@@ -735,6 +1405,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        isInlineImportingSettings = true;
+        if (inlineImportSettingsBtn) inlineImportSettingsBtn.disabled = true;
         try {
             const rawText = await selectedFile.text();
             await importEncryptedSettingsFromText(rawText, inlineImportPasswordInput.value || '');
@@ -747,7 +1419,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.location.reload();
         } catch (error) {
             setInlineSettingsStatus(`Import failed: ${error.message || 'Unknown error.'}`, 'error');
+        } finally {
+            isInlineImportingSettings = false;
+            if (inlineImportSettingsBtn) inlineImportSettingsBtn.disabled = false;
         }
+    }
+
+    inlineImportSettingsBtn?.addEventListener('click', async () => {
+        await runInlineImportSettings();
+    });
+
+    inlineImportPasswordInput?.addEventListener('keydown', async (event) => {
+        if (event.key !== 'Enter') return;
+        if (!inlineImportFileInput.files?.[0]) return;
+        event.preventDefault();
+        await runInlineImportSettings();
     });
 
     inlineClusterSelect?.addEventListener('change', async () => {
@@ -863,7 +1549,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             apiSecret: payload.apiSecret,
             apiToken: payload.apiToken,
             theme: payload.theme,
+            uiScale: payload.uiScale,
             consoleTabMode: payload.consoleTabMode,
+            sshDefaultUser: payload.sshDefaultUser,
+            sshDefaultKeyPath: payload.sshDefaultKeyPath,
+            sshSelectedDefaultKeyId: payload.sshSelectedDefaultKeyId,
+            sshKeyCatalog: payload.sshKeyCatalog,
+            sshHostOverrides: payload.sshHostOverrides,
+            sshUserOverrides: payload.sshUserOverrides,
+            sshHostDefaults: payload.sshHostDefaults,
             defaultActionClickMode: payload.defaultActionClickMode
         });
         syncClusterApiClients();
@@ -880,6 +1574,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         const secret = inlineApiSecretInput.value.trim();
         const previousUrl = settings?.proxmoxUrl || null;
         const previousToken = settings?.apiToken || null;
+        let sshDefaultUser = '';
+        let sshDefaultKeyPath = '';
+        let sshSelectedDefaultKeyId = '';
+        let sshKeyCatalog = [];
+        let sshHostOverrides = {};
+        let sshUserOverrides = {};
+        let sshHostDefaults = {};
+
+        try {
+            const sshSettings = getInlineSshSettingsFromInputs();
+            sshDefaultUser = sshSettings.sshDefaultUser;
+            sshDefaultKeyPath = sshSettings.sshDefaultKeyPath;
+            sshSelectedDefaultKeyId = sshSettings.sshSelectedDefaultKeyId;
+            sshKeyCatalog = sshSettings.sshKeyCatalog;
+            sshHostOverrides = sshSettings.sshHostOverrides;
+            sshUserOverrides = sshSettings.sshUserOverrides;
+            sshHostDefaults = sshSettings.sshHostDefaults;
+        } catch (error) {
+            setInlineSettingsStatus(`SSH settings error: ${error.message || 'Invalid SSH settings.'}`, 'error');
+            return;
+        }
 
         if (!normalized.ok || !user || !tokenId || !secret) {
             setInlineSettingsStatus(normalized.ok ? 'Please fill in all fields.' : normalized.error, 'error');
@@ -893,13 +1608,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             apiSecret: secret,
             apiToken: `${user}!${tokenId}=${secret}`,
             theme: inlineThemeSelect.value,
+            uiScale: normalizeUiScale(inlineUiScaleSlider?.value, DEFAULT_SETTINGS.uiScale),
             consoleTabMode: inlineTabModeSelect.value,
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults,
             defaultActionClickMode: inlineDefaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel'
         };
 
         await persistActiveClusterPayload(payload);
         settings = { ...settings, ...payload };
         applyTheme(payload.theme);
+        applyUiScale(payload.uiScale);
         inlineImportOnlyNoConfigMode = false;
         updateInlineImportOnlyVisibility();
         setInlineSettingsStatus('Settings saved successfully!', 'success');
@@ -923,6 +1647,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         const user = inlineApiUserInput.value.trim();
         const tokenId = inlineApiTokenIdInput.value.trim();
         const secret = inlineApiSecretInput.value.trim();
+        let sshDefaultUser = '';
+        let sshDefaultKeyPath = '';
+        let sshSelectedDefaultKeyId = '';
+        let sshKeyCatalog = [];
+        let sshHostOverrides = {};
+        let sshUserOverrides = {};
+        let sshHostDefaults = {};
+
+        try {
+            const sshSettings = getInlineSshSettingsFromInputs();
+            sshDefaultUser = sshSettings.sshDefaultUser;
+            sshDefaultKeyPath = sshSettings.sshDefaultKeyPath;
+            sshSelectedDefaultKeyId = sshSettings.sshSelectedDefaultKeyId;
+            sshKeyCatalog = sshSettings.sshKeyCatalog;
+            sshHostOverrides = sshSettings.sshHostOverrides;
+            sshUserOverrides = sshSettings.sshUserOverrides;
+            sshHostDefaults = sshSettings.sshHostDefaults;
+        } catch (error) {
+            setInlineSettingsStatus(`SSH settings error: ${error.message || 'Invalid SSH settings.'}`, 'error');
+            return;
+        }
 
         if (!normalized.ok || !user || !tokenId || !secret) {
             setInlineSettingsStatus(normalized.ok ? 'Please fill in all fields to test.' : normalized.error, 'error');
@@ -944,12 +1689,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 apiSecret: secret,
                 apiToken: `${user}!${tokenId}=${secret}`,
                 theme: inlineThemeSelect.value,
+                uiScale: normalizeUiScale(inlineUiScaleSlider?.value, DEFAULT_SETTINGS.uiScale),
                 consoleTabMode: inlineTabModeSelect.value,
+                sshDefaultUser,
+                sshDefaultKeyPath,
+                sshSelectedDefaultKeyId,
+                sshKeyCatalog,
+                sshHostOverrides,
+                sshUserOverrides,
+                sshHostDefaults,
                 defaultActionClickMode: inlineDefaultActionClickModeSelect.value === 'floating' ? 'floating' : 'sidepanel'
             };
             await persistActiveClusterPayload(payload);
             settings = { ...settings, ...payload };
             applyTheme(payload.theme);
+            applyUiScale(payload.uiScale);
             inlineImportOnlyNoConfigMode = false;
             updateInlineImportOnlyVisibility();
             noAuthOverlay.classList.add('hidden');
@@ -985,14 +1739,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         settings = {
             ...settings,
             theme: resetResult.storagePayload.theme,
+            uiScale: resetResult.storagePayload.uiScale,
             consoleTabMode: resetResult.storagePayload.consoleTabMode,
             defaultActionClickMode: resetResult.storagePayload.defaultActionClickMode,
             communityScriptsCacheTtlHours: resetResult.storagePayload.communityScriptsCacheTtlHours,
             defaultScriptNode: resetResult.storagePayload.defaultScriptNode,
-            scriptsPanelCollapsed: resetResult.storagePayload.scriptsPanelCollapsed
+            sshDefaultUser: resetResult.storagePayload.sshDefaultUser,
+            sshDefaultKeyPath: resetResult.storagePayload.sshDefaultKeyPath,
+            sshSelectedDefaultKeyId: resetResult.storagePayload.sshSelectedDefaultKeyId,
+            sshKeyCatalog: resetResult.storagePayload.sshKeyCatalog,
+            sshHostOverrides: resetResult.storagePayload.sshHostOverrides,
+            sshUserOverrides: resetResult.storagePayload.sshUserOverrides,
+            sshHostDefaults: resetResult.storagePayload.sshHostDefaults,
+            scriptsPanelCollapsed: resetResult.storagePayload.scriptsPanelCollapsed,
+            expandDetailsByDefault: resetResult.storagePayload.expandDetailsByDefault,
+            favoriteResourceIds: resetResult.storagePayload.favoriteResourceIds
         };
         displaySettings = { ...FACTORY_DEFAULT_DISPLAY_SETTINGS };
-        activeFilters = { type: 'all', status: 'all', tag: null };
+        expandDetailsByDefault = Boolean(resetResult.storagePayload.expandDetailsByDefault);
+        favoriteResourceIds = new Set(resetResult.storagePayload.favoriteResourceIds || []);
+        activeFilters = {
+            types: [...DEFAULT_TYPE_FILTERS],
+            statuses: [...DEFAULT_STATUS_FILTERS],
+            tag: null
+        };
         currentExpandedId = null;
         allResources = [];
         resourcesByClusterId.clear();
@@ -1002,15 +1772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         searchInput.value = '';
         updateSearchClearState();
-        filterPills.forEach((pill) => {
-            const filterType = pill.getAttribute('data-filter-type');
-            const filterStatus = pill.getAttribute('data-filter-status');
-            if (!filterType && !filterStatus) return;
-            pill.classList.remove('active');
-            if (filterType === 'all') {
-                pill.classList.add('active');
-            }
-        });
+        syncFilterPillsFromState();
 
         syncDisplaySettingsCheckboxes();
         applyDisplaySettings();
@@ -1038,6 +1800,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         await chrome.storage.local.set({ displaySettings });
     }
 
+    async function persistExpandDetailsByDefault() {
+        await chrome.storage.local.set({ expandDetailsByDefault });
+    }
+
     function syncDisplaySettingsCheckboxes() {
         DISPLAY_SETTING_KEYS.forEach((setting) => {
             const checkbox = displaySettingCheckboxes[setting];
@@ -1045,6 +1811,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 checkbox.checked = Boolean(displaySettings[setting]);
             }
         });
+        if (expandDetailsDefaultCheckbox) {
+            expandDetailsDefaultCheckbox.checked = expandDetailsByDefault;
+        }
     }
 
     // Handle Display Settings Changes
@@ -1056,6 +1825,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             applyDisplaySettings();
             await persistDisplaySettings();
         });
+    });
+
+    expandDetailsDefaultCheckbox?.addEventListener('change', async () => {
+        expandDetailsByDefault = Boolean(expandDetailsDefaultCheckbox.checked);
+        settings.expandDetailsByDefault = expandDetailsByDefault;
+        await persistExpandDetailsByDefault();
+        filterAndRender();
     });
 
     function applyDisplaySettings() {
@@ -1439,11 +2215,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function setGlobalSettingsFromStore(stored) {
+        const savedFavoriteResourceIds = Array.isArray(stored.favoriteResourceIds)
+            ? stored.favoriteResourceIds.filter((id) => typeof id === 'string' && id.trim())
+            : [];
+        const sshDefaultUser = normalizeSshUser(stored.sshDefaultUser || DEFAULT_SETTINGS.sshDefaultUser);
+        const sshDefaultKeyPath = normalizeSshKeyPath(stored.sshDefaultKeyPath || DEFAULT_SETTINGS.sshDefaultKeyPath);
+        const sshHostOverrides = mergeHostOverridesWithLegacy(
+            stored.sshHostOverrides || DEFAULT_SETTINGS.sshHostOverrides,
+            stored.sshUserOverrides || {}
+        );
+        const legacyKeyPaths = collectInlineLegacyKeyPaths(sshDefaultKeyPath, sshHostOverrides);
+        const sshKeyCatalog = normalizeSshKeyCatalog(stored.sshKeyCatalog || DEFAULT_SETTINGS.sshKeyCatalog);
+        const mergedCatalog = buildMergedSshKeyCatalog(sshKeyCatalog, legacyKeyPaths);
+        const sshSelectedDefaultKeyId = String(stored.sshSelectedDefaultKeyId || '').trim()
+            || findSshKeyIdByPath(mergedCatalog, sshDefaultKeyPath);
+        const sshUserOverrides = {};
+        Object.entries(sshHostOverrides).forEach(([alias, override]) => {
+            if (!override?.user) return;
+            sshUserOverrides[alias] = override.user;
+        });
+        const sshHostDefaults = normalizeSshHostDefaults(stored.sshHostDefaults || DEFAULT_SETTINGS.sshHostDefaults);
+        favoriteResourceIds = new Set(savedFavoriteResourceIds);
+        expandDetailsByDefault = Boolean(stored.expandDetailsByDefault);
         settings = {
             ...stored,
             theme: stored.theme || DEFAULT_SETTINGS.theme,
+            uiScale: normalizeUiScale(stored.uiScale, DEFAULT_SETTINGS.uiScale),
             consoleTabMode: stored.consoleTabMode || DEFAULT_SETTINGS.consoleTabMode,
-            defaultActionClickMode: stored.defaultActionClickMode || DEFAULT_SETTINGS.defaultActionClickMode
+            sshDefaultUser,
+            sshDefaultKeyPath,
+            sshSelectedDefaultKeyId,
+            sshKeyCatalog,
+            sshHostOverrides,
+            sshUserOverrides,
+            sshHostDefaults,
+            defaultActionClickMode: stored.defaultActionClickMode || DEFAULT_SETTINGS.defaultActionClickMode,
+            favoriteResourceIds: savedFavoriteResourceIds,
+            expandDetailsByDefault
         };
     }
 
@@ -1481,11 +2289,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        const favoritesTab = document.createElement('button');
+        favoritesTab.type = 'button';
+        favoritesTab.className = `cluster-tab favorites-tab ${activeClusterTabId === FAVORITES_TAB_ID ? 'active' : ''}`;
+        favoritesTab.dataset.clusterTab = FAVORITES_TAB_ID;
+        favoritesTab.innerHTML = `
+            <span class="cluster-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="12" height="12" focusable="false">
+                    <path fill="currentColor" d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.46,13.97L5.82,21L12,17.27Z"/>
+                </svg>
+            </span>
+            <span>Favorites</span>
+        `;
+        clusterTabs.appendChild(favoritesTab);
+
         const allTab = document.createElement('button');
         allTab.type = 'button';
         allTab.className = `cluster-tab ${activeClusterTabId === ALL_CLUSTERS_TAB_ID ? 'active' : ''} all-clusters`;
         allTab.dataset.clusterTab = ALL_CLUSTERS_TAB_ID;
-        allTab.innerHTML = '<span class="cluster-tab-icon">stack</span><span>All Clusters</span>';
+        allTab.innerHTML = `
+            <span class="cluster-tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="12" height="12" focusable="false">
+                    <path fill="currentColor" d="M12,2L2,7L12,12L22,7L12,2M2,17L12,22L22,17V12L12,17L2,12V17Z"/>
+                </svg>
+            </span>
+            <span>All Clusters</span>
+        `;
         clusterTabs.appendChild(allTab);
 
         enabledClusters.forEach((cluster) => {
@@ -1493,6 +2322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             tab.type = 'button';
             tab.className = `cluster-tab ${activeClusterTabId === cluster.id ? 'active' : ''}`;
             tab.dataset.clusterTab = cluster.id;
+            tab.dataset.clusterColor = getClusterColorToken(cluster.id);
             tab.title = cluster.name;
             tab.innerHTML = `<span class="cluster-status-dot"></span><span>${cluster.name}</span>`;
             clusterTabs.appendChild(tab);
@@ -1502,11 +2332,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function setActiveClusterTab(nextTabId) {
         const enabledClusterIds = new Set(getEnabledClusters().map((cluster) => cluster.id));
-        if (nextTabId !== ALL_CLUSTERS_TAB_ID && !enabledClusterIds.has(nextTabId)) {
+        const isSpecialTab = nextTabId === ALL_CLUSTERS_TAB_ID || nextTabId === FAVORITES_TAB_ID;
+        if (!isSpecialTab && !enabledClusterIds.has(nextTabId)) {
             nextTabId = activeClusterId || ALL_CLUSTERS_TAB_ID;
         }
         activeClusterTabId = nextTabId || ALL_CLUSTERS_TAB_ID;
-        if (activeClusterTabId !== ALL_CLUSTERS_TAB_ID) {
+        if (activeClusterTabId !== ALL_CLUSTERS_TAB_ID && activeClusterTabId !== FAVORITES_TAB_ID) {
             activeClusterId = activeClusterTabId;
         }
         setActiveClusterContext(activeClusterId);
@@ -1518,19 +2349,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const savedFilters = readScopedUiValue('lastFilters', '');
         if (savedFilters) {
             try {
-                activeFilters = JSON.parse(savedFilters);
+                activeFilters = normalizeActiveFilters(JSON.parse(savedFilters));
             } catch (_error) {
-                activeFilters = { type: 'all', status: 'all', tag: null };
+                activeFilters = normalizeActiveFilters(null);
             }
         } else {
-            activeFilters = { type: 'all', status: 'all', tag: null };
+            activeFilters = normalizeActiveFilters(null);
         }
-        filterPills.forEach((pill) => pill.classList.remove('active'));
-        document.querySelector('.filter-pill[data-filter-type="all"]')?.classList.add('active');
-        document.querySelector(`.filter-pill[data-filter-type="${activeFilters.type}"]`)?.classList.add('active');
-        if (activeFilters.status && activeFilters.status !== 'all') {
-            document.querySelector(`.filter-pill[data-filter-status="${activeFilters.status}"]`)?.classList.add('active');
-        }
+        syncFilterPillsFromState();
         renderClusterTabs();
         await persistClusterContext();
         await fetchAndRender(true);
@@ -1548,12 +2374,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load saved settings
     const stored = await chrome.storage.local.get([
         'theme',
+        'uiScale',
         'displaySettings',
         'consoleTabMode',
         'communityScriptsCacheTtlHours',
         'defaultScriptNode',
+        'sshDefaultUser',
+        'sshDefaultKeyPath',
+        'sshSelectedDefaultKeyId',
+        'sshKeyCatalog',
+        'sshHostOverrides',
+        'sshUserOverrides',
+        'sshHostDefaults',
         'defaultActionClickMode',
         'scriptsPanelCollapsed',
+        'expandDetailsByDefault',
+        'favoriteResourceIds',
         'activeClusterTabId'
     ]);
     setGlobalSettingsFromStore(stored);
@@ -1574,6 +2410,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (settings.theme) {
         applyTheme(settings.theme);
     }
+    applyUiScale(settings.uiScale ?? DEFAULT_SETTINGS.uiScale);
 
     const scriptsPanelCollapsedOnStartup = typeof settings.scriptsPanelCollapsed === 'undefined'
         ? true
@@ -1606,6 +2443,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         const clusterKey = res.__clusterId || activeClusterId || 'single';
         return res.vmid ? `${clusterKey}/${res.node}/${res.type}/${res.vmid}` : `${clusterKey}/node/${res.node}`;
     };
+
+    const getFavoriteResourceId = (res) => {
+        const clusterSegment = res.__clusterId || activeClusterId || 'cluster';
+        return res.vmid ? `vm-${clusterSegment}-${res.vmid}` : `node-${clusterSegment}-${res.node}`;
+    };
+
+    const isFavoriteResource = (res) => favoriteResourceIds.has(getFavoriteResourceId(res));
+
+    async function persistFavoriteResourceIds() {
+        await chrome.storage.local.set({
+            favoriteResourceIds: Array.from(favoriteResourceIds)
+        });
+    }
+
+    async function pruneFavoriteResourceIds(resources) {
+        const existingIds = resources.map((resource) => getFavoriteResourceId(resource));
+        const nextFavoriteIds = filterFavoriteIdsByExistingResources(Array.from(favoriteResourceIds), existingIds);
+        if (nextFavoriteIds.length === favoriteResourceIds.size) return;
+        favoriteResourceIds = new Set(nextFavoriteIds);
+        settings.favoriteResourceIds = nextFavoriteIds;
+        await persistFavoriteResourceIds();
+    }
 
     scriptsSearchInput.addEventListener('input', () => {
         updateScriptsSearchClearState();
@@ -1718,7 +2577,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const enabledClusters = getEnabledClusters();
             resourcesByClusterId.clear();
-            if (activeClusterTabId === ALL_CLUSTERS_TAB_ID) {
+            if (activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID) {
                 const results = await Promise.all(enabledClusters.map(async (cluster) => {
                     const client = apiClients.get(cluster.id);
                     if (!client) return [];
@@ -1761,8 +2620,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                     resource.status = expectedStatus;
                 }
             });
+            // Only prune stale favorites when we have a full cross-cluster dataset.
+            // On single-cluster tabs, pruning would incorrectly drop favorites from other clusters.
+            if (activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID) {
+                await pruneFavoriteResourceIds(allResources);
+            }
 
-            renderTagFilters(allResources);
+            const tagFilterSource = activeClusterTabId === FAVORITES_TAB_ID
+                ? allResources.filter((resource) => isFavoriteResource(resource))
+                : allResources;
+            renderTagFilters(tagFilterSource);
             filterAndRender();
             renderScriptNodeOptions(allResources);
         } catch (error) {
@@ -1822,55 +2689,140 @@ document.addEventListener('DOMContentLoaded', async () => {
             const resourceApi = apiClients.get(res.__clusterId) || api;
             const clone = template.content.cloneNode(true);
             const item = clone.querySelector('.resource-item');
+            if (!item) {
+                continue;
+            }
             
             // Set unique ID for persistence
-            const clusterSegment = res.__clusterId || activeClusterId || 'cluster';
-            const resId = res.vmid ? `vm-${clusterSegment}-${res.vmid}` : `node-${clusterSegment}-${res.node}`;
+            const resId = getFavoriteResourceId(res);
             item.setAttribute('data-id', resId);
+            item.classList.add(`type-${res.type}`);
 
-            const itemMain = clone.querySelector('.item-main');
-            const indicator = clone.querySelector('.status-indicator');
-            const nameEl = clone.querySelector('.name');
-            const typeNodeEl = clone.querySelector('.type-node');
-            const nodeIdEl = clone.querySelector('.node-id');
-            const uptimeEl = clone.querySelector('.uptime');
-            const osTag = clone.querySelector('.tag.os');
-            const ipTag = clone.querySelector('.tag.ip');
-            const novncBtn = clone.querySelector('.novnc');
-            const spiceBtn = clone.querySelector('.spice');
-            const sshBtn = clone.querySelector('.ssh');
-            const shellBtn = clone.querySelector('.shell');
-            const userTags = clone.querySelector('.user-tags');
+            const itemMain = item.querySelector('.item-main');
+            const indicator = item.querySelector('.status-indicator');
+            const nameEl = item.querySelector('.name');
+            const nameChipsEl = item.querySelector('.name-chips');
+            const subtitleEl = item.querySelector('.resource-subtitle');
+            const typeNodeEl = item.querySelector('.type-node');
+            const nodeIdEl = item.querySelector('.node-id');
+            const uptimeEl = item.querySelector('.uptime');
+            const osTag = item.querySelector('.tag.os');
+            const ipTag = item.querySelector('.tag.ip');
+            const novncBtn = item.querySelector('.novnc');
+            const spiceBtn = item.querySelector('.spice');
+            const sshBtn = item.querySelector('.ssh');
+            const shellBtn = item.querySelector('.shell');
+            const userTags = item.querySelector('.user-tags');
+            const actionsEl = item.querySelector('.actions');
 
             // Resource Details Elements
-            const cpuBar = clone.querySelector('.cpu-bar');
-            const cpuValue = clone.querySelector('.cpu-value');
-            const memBar = clone.querySelector('.mem-bar');
-            const memValue = clone.querySelector('.mem-value');
-            const diskBar = clone.querySelector('.disk-bar');
-            const diskValue = clone.querySelector('.disk-value');
-            const diskRow = clone.querySelector('#disk-row');
+            const cpuBar = item.querySelector('.cpu-bar');
+            const cpuValue = item.querySelector('.cpu-value');
+            const memBar = item.querySelector('.mem-bar');
+            const memValue = item.querySelector('.mem-value');
+            const diskBar = item.querySelector('.disk-bar');
+            const diskValue = item.querySelector('.disk-value');
+            const diskRow = item.querySelector('#disk-row');
 
-            nameEl.textContent = res.name || res.vmid || res.node;
-            typeNodeEl.textContent = `${res.type.toUpperCase()} @ ${res.node}`;
-            if (activeClusterTabId === ALL_CLUSTERS_TAB_ID && res.__clusterName) {
+            const displayName = (
+                res.type === 'node'
+                    ? (res.node || res.name || 'Node')
+                    : (res.name || res.vmid || res.node || '')
+            ).toString();
+            const isMixedClusterView = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
+            if (nameEl) {
+                nameEl.textContent = displayName;
+            }
+            if (nameChipsEl && typeNodeEl.parentElement !== nameChipsEl) {
+                nameChipsEl.appendChild(typeNodeEl);
+            }
+            if (subtitleEl && uptimeEl.parentElement !== subtitleEl) {
+                subtitleEl.appendChild(uptimeEl);
+            }
+            typeNodeEl.textContent = res.type.toUpperCase();
+            typeNodeEl.classList.add('subtitle-chip', 'subtitle-type');
+            typeNodeEl.classList.add(`subtitle-type-${res.type}`);
+            typeNodeEl.classList.remove('hidden');
+
+            const showNodeChip = res.type !== 'node';
+            let nodeChipEl = null;
+            if (showNodeChip) {
+                nodeChipEl = document.createElement('span');
+                nodeChipEl.className = 'subtitle-chip subtitle-node';
+                nodeChipEl.textContent = res.node;
+                if (subtitleEl && osTag?.parentElement === subtitleEl) {
+                    subtitleEl.insertBefore(nodeChipEl, osTag);
+                } else {
+                    subtitleEl?.appendChild(nodeChipEl);
+                }
+            }
+
+            if (isMixedClusterView && res.__clusterName) {
                 const clusterBadge = document.createElement('span');
                 clusterBadge.className = 'cluster-resource-badge';
+                clusterBadge.dataset.clusterColor = getClusterColorToken(res.__clusterId);
                 clusterBadge.textContent = res.__clusterName;
-                typeNodeEl.appendChild(clusterBadge);
+                if (nodeChipEl) {
+                    nodeChipEl.appendChild(clusterBadge);
+                } else {
+                    const clusterChip = document.createElement('span');
+                    clusterChip.className = 'subtitle-chip subtitle-node';
+                    clusterChip.textContent = res.__clusterName;
+                    if (subtitleEl && osTag?.parentElement === subtitleEl) {
+                        subtitleEl.insertBefore(clusterChip, osTag);
+                    } else {
+                        subtitleEl?.appendChild(clusterChip);
+                    }
+                }
             }
-            if (res.vmid) {
-                nodeIdEl.textContent = `(ID ${res.vmid})`;
+            if ((res.type === 'qemu' || res.type === 'lxc') && res.vmid) {
+                nodeIdEl.textContent = `ID ${res.vmid}`;
+                nodeIdEl.classList.add('subtitle-chip', 'subtitle-vmid');
+                nodeIdEl.classList.remove('hidden');
+                nameChipsEl?.appendChild(nodeIdEl);
+            } else {
+                nodeIdEl.textContent = '';
+                nodeIdEl.classList.add('hidden');
+                nameChipsEl?.appendChild(nodeIdEl);
             }
 
             if (res.uptime && (res.status === 'running' || res.status === 'online')) {
                 uptimeEl.textContent = formatUptime(res.uptime);
+                uptimeEl.classList.remove('tag', 'uptime-meta-tag');
+                uptimeEl.classList.add('subtitle-chip');
+                if (subtitleEl) {
+                    if (osTag?.parentElement === subtitleEl) {
+                        const afterOsTag = osTag.nextElementSibling;
+                        if (afterOsTag) {
+                            subtitleEl.insertBefore(uptimeEl, afterOsTag);
+                        } else {
+                            subtitleEl.appendChild(uptimeEl);
+                        }
+                    } else {
+                        subtitleEl.appendChild(uptimeEl);
+                    }
+                }
                 uptimeEl.classList.remove('hidden');
+            } else {
+                uptimeEl.textContent = '';
+                uptimeEl.classList.add('hidden');
+                uptimeEl.classList.remove('tag', 'uptime-meta-tag', 'subtitle-chip');
+                if (subtitleEl) {
+                    subtitleEl.appendChild(uptimeEl);
+                } else {
+                    nameChipsEl?.appendChild(uptimeEl);
+                }
             }
             
-            indicator.classList.add((res.status === 'running' || res.status === 'online') ? 'status-running' : (res.status === 'stopped' ? 'status-stopped' : 'status-unknown'));
+            const isRunning = res.status === 'running' || res.status === 'online';
+            const isStopped = res.status === 'stopped';
+            const statusClass = isRunning ? 'status-running' : (isStopped ? 'status-stopped' : 'status-unknown');
+            const statusLabel = isRunning ? 'running' : (isStopped ? 'stopped' : 'unknown');
+            indicator.classList.add(statusClass);
+            indicator.setAttribute('title', `Status: ${statusLabel}`);
+            indicator.setAttribute('aria-label', `Status ${statusLabel}`);
 
-            if (currentExpandedId === resId) {
+            if (expandDetailsByDefault || currentExpandedId === resId) {
                 item.classList.add('expanded');
             }
             itemMain.addEventListener('click', () => {
@@ -1888,8 +2840,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
 
+            const favoriteBtn = document.createElement('button');
+            favoriteBtn.type = 'button';
+            favoriteBtn.className = `action-btn favorite-toggle ${favoriteResourceIds.has(resId) ? 'active' : ''}`;
+            favoriteBtn.title = favoriteResourceIds.has(resId) ? 'Remove favorite' : 'Add favorite';
+            favoriteBtn.textContent = '★';
+            favoriteBtn.addEventListener('click', async (event) => {
+                event.stopPropagation();
+                if (favoriteResourceIds.has(resId)) {
+                    favoriteResourceIds.delete(resId);
+                } else {
+                    favoriteResourceIds.add(resId);
+                }
+                settings.favoriteResourceIds = Array.from(favoriteResourceIds);
+                await persistFavoriteResourceIds();
+                const active = favoriteResourceIds.has(resId);
+                favoriteBtn.classList.toggle('active', active);
+                favoriteBtn.title = active ? 'Remove favorite' : 'Add favorite';
+                if (activeClusterTabId === FAVORITES_TAB_ID && !active) {
+                    filterAndRender();
+                }
+            });
+            actionsEl?.append(favoriteBtn);
+
             // Usage Stats (Initial from cluster/resources)
-            updateUsageStats(clone, res);
+            updateUsageStats(item, res);
 
             // Fetch details (IP, OS, Disks) for all types if status allows
             if (resourceApi && (res.status === 'running' || res.status === 'online' || res.type === 'node')) {
@@ -1966,7 +2941,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }).catch(err => console.error('Details error:', err));
             }
 
-            const tagsContainer = clone.querySelector('.user-tags');
+            const tagsContainer = item.querySelector('.user-tags');
             if (res.tags) {
                 tagsContainer.innerHTML = '';
                 tagsContainer.classList.remove('hidden');
@@ -1981,14 +2956,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // Power Controls
-            const powerControls = clone.querySelector('.power-controls');
-            const btnStart = powerControls.querySelector('.b-start');
-            const btnShutdown = powerControls.querySelector('.b-shutdown');
-            const btnStop = powerControls.querySelector('.b-stop');
-            const btnReboot = powerControls.querySelector('.b-reboot');
-            const powerStatus = powerControls.querySelector('.power-status');
+            const powerControls = item.querySelector('.power-controls');
+            const btnStart = powerControls?.querySelector('.b-start');
+            const btnShutdown = powerControls?.querySelector('.b-shutdown');
+            const btnStop = powerControls?.querySelector('.b-stop');
+            const btnReboot = powerControls?.querySelector('.b-reboot');
+            const powerStatus = powerControls?.querySelector('.power-status');
+            const hasPowerControls = Boolean(powerControls && btnStart && btnShutdown && btnStop && btnReboot && powerStatus);
 
             const updatePowerButtons = () => {
+                if (!hasPowerControls) return;
                 const status = res.status;
                 const type = res.type;
                 [btnStart, btnShutdown, btnStop, btnReboot].forEach(b => b.classList.add('hidden'));
@@ -2010,6 +2987,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             updatePowerButtons();
 
             const pollStatus = async (targetStatus, maxAttempts = 20) => {
+                if (!hasPowerControls) return;
                 let attempts = 0;
                 const check = async () => {
                     attempts++;
@@ -2049,6 +3027,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
 
             const handleAction = async (action) => {
+                if (!hasPowerControls) return;
                 powerStatus.classList.remove('hidden');
                 powerStatus.textContent = chrome.i18n.getMessage('sendingAction') || 'Sending...';
                 [btnStart, btnShutdown, btnStop, btnReboot].forEach(b => b.style.pointerEvents = 'none');
@@ -2085,10 +3064,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             };
 
-            btnStart.onclick = (e) => { e.stopPropagation(); handleAction('start'); };
-            btnShutdown.onclick = (e) => { e.stopPropagation(); handleAction('shutdown'); };
-            btnStop.onclick = (e) => { e.stopPropagation(); handleAction('stop'); };
-            btnReboot.onclick = (e) => { e.stopPropagation(); handleAction('reboot'); };
+            if (hasPowerControls) {
+                btnStart.onclick = (e) => { e.stopPropagation(); handleAction('start'); };
+                btnShutdown.onclick = (e) => { e.stopPropagation(); handleAction('shutdown'); };
+                btnStop.onclick = (e) => { e.stopPropagation(); handleAction('stop'); };
+                btnReboot.onclick = (e) => { e.stopPropagation(); handleAction('reboot'); };
+            }
 
             // Console and Spice Logic
             if (res.type === 'node') {
@@ -2117,7 +3098,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
-            resourceList.appendChild(clone);
+            resourceList.appendChild(item);
         }
 
         // Persistence: Check if we need to scroll to an item
@@ -2522,11 +3503,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         const query = searchInput.value.toLowerCase().trim();
         
         const filtered = allResources.filter(res => {
-            // 1. Type filter
-            if (activeFilters.type !== 'all' && res.type !== activeFilters.type) return false;
+            if (activeClusterTabId === FAVORITES_TAB_ID && !isFavoriteResource(res)) return false;
 
-            // 2. Status filter
-            if (activeFilters.status !== 'all' && res.status !== activeFilters.status) return false;
+            // 1. Type filter (OR within enabled types)
+            if (!activeFilters.types.length || !activeFilters.types.includes(res.type)) {
+                return false;
+            }
+
+            // 2. Status filter (OR within enabled statuses)
+            const normalizedStatus = res?.type === 'node'
+                ? (res.status === 'online' ? 'running' : res.status === 'offline' ? 'stopped' : res.status)
+                : res.status;
+            if (!activeFilters.statuses.length || !activeFilters.statuses.includes(normalizedStatus)) {
+                return false;
+            }
 
             const name = (res.name || res.vmid || res.node || '').toString().toLowerCase();
             const vmid = (res.vmid || '').toString().toLowerCase();

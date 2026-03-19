@@ -21,6 +21,8 @@ A dedicated Chrome Extension for Proxmox VE cluster management, providing instan
 - **Guided No-Config Onboarding**: Start with `Configure` or directly use `Import Settings` for restore-first setup.
 - **Inline Advanced Settings**: Open and edit settings directly inside the current extension view, including Help and About sections.
 - **Community Scripts Assist**: Select scripts, copy install commands, and jump directly into host shell.
+- **SSH Config Export (Extras Tab)**: Export Linux host entries as OpenSSH config, PuTTY `.reg`, or CSV with global defaults and per-host overrides.
+- **Global UI Scale Controls**: Tune readability with presets (`Compact`, `Standard`, `Large`) and a fine-grained scale slider, applied live across popup/sidepanel/options.
 - **Theme Selection**: Manually toggle between **Dark**, **Light**, or **System** themes.
 - **Stability and Performance**: Automated node discovery with seamless failover and expired session detection.
 - **Secure**: Uses Proxmox API Tokens for authentication; all credentials stay local.
@@ -64,6 +66,19 @@ You can install PROXMUX Manager directly from the [Chrome Web Store](https://chr
     - **API Secret**: the token secret value.
 4. Click **Save Settings** and grant host permissions.
 5. **High Availability**: Once configured, the extension will automatically discover other cluster nodes and store them for failover.
+
+### SSH Config Export
+
+- Open **Settings** and switch to the **Extras** tab.
+- Set an optional global **Default SSH user** (for example `root` or `ubuntu`).
+- Maintain a custom **SSH key catalog** (`label + path`); common `~/.ssh` key paths are auto-added to the dropdowns.
+- Select an optional global **Default SSH key** from the dropdown.
+- Add one or more per-host overrides using the row editor (`Host alias` + optional `User` + optional `SSH key` from dropdown).
+- Define shared host defaults with OpenSSH directives (for example `Port 22`, `IdentityFile ~/.ssh/id_ed25519`, `ProxyJump bastion.example.com`).
+- Use **Download SSH Config** or **Copy SSH Config** to export all detected Linux hosts with IP addresses.
+- If `IdentityFile` is already set in SSH host defaults, it stays the primary default and the selected default key is ignored.
+- Exported `Host` aliases use the visible machine names in lowercase; only collisions get a cluster suffix.
+- Add the output to your `~/.ssh/config`.
 
 ## Proxmox API Token Setup
 
@@ -110,13 +125,16 @@ If PROXMUX only shows nodes but not VMs/LXCs, validate token rights first (`Sys.
   - `store/screenshot_04_settings_cluster_1280x800.png`
   - `store/screenshot_05_settings_backup_1280x800.png`
 
-## What's New in v1.2.0
+## What's New in v1.2.1
 
-- **Multi-Cluster Factory Reset**: `Reset Settings` now resets all clusters to one default cluster and restores global defaults in both popup and options.
-- **No-Config Entry Improvements**: Users can choose `Configure` or `Import Settings` directly from the no-config banner.
-- **Import-First Onboarding**: In no-config import mode, backup export and Save/Test actions are hidden to keep restore flow focused.
-- **In-Addon Confirmations Only**: Removed native browser confirm/alert dialogs; reset and SPICE error messaging now stays fully inside the extension UI.
-- **Store Screenshot Refresh**: Added a 5-scene marketing storyboard that combines Light + Dark views into unified 1280x800 assets.
+- **Global UI Scaling**: Added presets plus fine slider with live sync between open popup/sidepanel/options surfaces.
+- **SSH Export Formats**: Added OpenSSH, PuTTY `.reg`, and CSV outputs with matching file extensions on download.
+- **Resource Card Layout Cleanup**: Unified row/chip placement across mixed views and cluster tabs for consistent scanning.
+- **Calm Premium Filter UX**: Reworked tabs and filter/chip rows for clearer active-state contrast and calmer visual density.
+- **Multi-Toggle Filter Model**: Type and status filters are independently toggleable (`Node/VM/LXC`, `Online/Offline`) with OR logic within each group.
+- **Node Filter Compatibility Fix**: Node `online/offline` states are normalized to the status filter model so node visibility remains correct.
+- **Status UX Refresh**: Modernized running/stopped/unknown visuals, status filter pills, and power action feedback chip.
+- **Stats Column Alignment**: Detail bars now share consistent width and value text aligns to one left-starting vertical value column.
 
 ## Version 1.1.3 Release Notes
 
