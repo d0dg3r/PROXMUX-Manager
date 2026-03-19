@@ -462,7 +462,7 @@
         "message": "Export-Format"
     },
     "sshExportFormatHelp": {
-        "message": "Ausgabeformat fuer Download/Kopieren waehlen."
+        "message": "Ausgabeformat fuer Download/Kopieren wählen."
     },
     "sshExportFormatOptionOpenSsh": {
         "message": "OpenSSH-Config"
