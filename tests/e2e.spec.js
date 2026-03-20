@@ -126,6 +126,24 @@ test.describe('PROXMUX Popup (Mock Environment)', () => {
     expect(popupSource).toContain('let isInlineImportingSettings = false;');
   });
 
+  test('should accept cluster URLs without explicit port and not default to 8006 in failover', async () => {
+    const popupSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.js'), 'utf8');
+    const popupHtmlSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.html'), 'utf8');
+    const optionsSource = fs.readFileSync(path.resolve(__dirname, '../options/options.js'), 'utf8');
+    const optionsHtmlSource = fs.readFileSync(path.resolve(__dirname, '../options/options.html'), 'utf8');
+
+    // Placeholders must not suggest port is required
+    expect(popupHtmlSource).not.toContain('placeholder="https://proxmox.example.com:8006"');
+    expect(optionsHtmlSource).not.toContain('placeholder="https://proxmox.example.com:8006"');
+
+    // updateFailoverNodes must not fall back to a hardcoded port when primary URL has no port
+    expect(popupSource).not.toContain("urlObj.protocol === 'https:' ? '8006' : '80'");
+
+    // Error message examples should mention portless URL
+    expect(popupSource).toContain('https://proxmox.example.com or https://proxmox.example.com:8006');
+    expect(optionsSource).toContain('https://proxmox.example.com or https://proxmox.example.com:8006');
+  });
+
   test('should hide cluster tabs when settings opens and show again on close', async ({ page }) => {
     await page.addInitScript(() => {
       const storage = {

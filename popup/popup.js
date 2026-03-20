@@ -838,7 +838,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             parsed = new URL(withScheme);
         } catch (_error) {
-            return { ok: false, error: 'Invalid URL. Example: https://proxmox.example.com:8006' };
+            return { ok: false, error: 'Invalid URL. Example: https://proxmox.example.com or https://proxmox.example.com:8006' };
         }
 
         if (parsed.protocol !== 'https:') {
@@ -3658,11 +3658,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (nodes.length <= 1) return;
 
             const urlObj = new URL(primaryUrl);
-            const port = urlObj.port || (urlObj.protocol === 'https:' ? '8006' : '80');
+            const port = urlObj.port;
             const protocol = urlObj.protocol;
 
-            // Generate URLs for all nodes, assuming they listen on the same port
-            const failoverUrls = nodes.map(n => `${protocol}//${n.node}:${port}`);
+            // Generate URLs for all nodes using the same port (or no explicit port if primary has none)
+            const failoverUrls = nodes.map(n =>
+                port ? `${protocol}//${n.node}:${port}` : `${protocol}//${n.node}`
+            );
             
             // Unique URLs including the primary one
             const uniqueUrls = [...new Set([primaryUrl, ...failoverUrls])];
