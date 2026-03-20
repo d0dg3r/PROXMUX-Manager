@@ -570,7 +570,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             parsed = new URL(withScheme);
         } catch (e) {
-            return { ok: false, error: 'Invalid URL. Example: https://proxmox.example.com:8006' };
+            return { ok: false, error: 'Invalid URL. Example: https://proxmox.example.com or https://proxmox.example.com:8006' };
         }
 
         if (parsed.protocol !== 'https:') {
