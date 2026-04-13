@@ -39,6 +39,7 @@
             </div>
         </header>
         <div id="cluster-tabs" class="cluster-tabs hidden" aria-label="Cluster tabs"></div>
+        <div id="cluster-fetch-banner" class="cluster-fetch-banner hidden" role="status" aria-live="polite"></div>
         <div class="search-container">
                 <div class="search-wrapper">
                     <div class="search-icon">
@@ -133,6 +134,7 @@
             <!-- Session Expired State -->
             <div id="session-error" class="header-alert hidden">
                 <p data-i18n="sessionExpiredDesc">Session expired. Please log in to Proxmox.</p>
+                <p id="session-error-host" class="session-error-host hidden"></p>
                 <div class="header-alert-actions">
                     <button id="login-btn" class="compact-btn primary" data-i18n="loginNow">Log in</button>
                     <button id="close-session-error" class="compact-btn" data-i18n="close">Close</button>

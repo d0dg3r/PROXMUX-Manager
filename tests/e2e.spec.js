@@ -989,6 +989,128 @@ test.describe('PROXMUX Popup (Mock Environment)', () => {
     await expect(page.locator('[data-id="vm-production-201"] .favorite-toggle')).toHaveClass(/active/);
   });
 
+  test('should surface partial cluster load failures in All Clusters view', async ({ page }) => {
+    await page.addInitScript(() => {
+      const storage = {
+        theme: 'dark',
+        displaySettings: { uptime: true, ip: true, os: true, vmid: true, tags: true },
+        scriptsPanelCollapsed: true,
+        activeClusterTabId: '__all__',
+        activeClusterId: 'production',
+        favoriteResourceIds: [],
+        clusters: {
+          production: {
+            id: 'production',
+            name: 'Production',
+            proxmoxUrl: 'https://pve-prod-01.lan:8006',
+            apiUser: 'api-admin@pve',
+            apiTokenId: 'full-access',
+            apiSecret: 'prod-secret',
+            apiToken: 'api-admin@pve!full-access=prod-secret',
+            failoverUrls: [],
+            isEnabled: true
+          },
+          staging: {
+            id: 'staging',
+            name: 'Staging',
+            proxmoxUrl: 'https://pve-staging-01.lan:8006',
+            apiUser: 'api-admin@pve',
+            apiTokenId: 'full-access',
+            apiSecret: 'staging-secret',
+            apiToken: 'api-admin@pve!full-access=staging-secret',
+            failoverUrls: [],
+            isEnabled: true
+          }
+        },
+        communityScriptsCatalogCacheV1: {
+          source: 'fixture',
+          updatedAt: Date.now(),
+          schemaVersion: 2,
+          scripts: []
+        }
+      };
+
+      const resolveGet = (keys) => {
+        if (!keys) return { ...storage };
+        if (Array.isArray(keys)) return keys.reduce((acc, key) => ({ ...acc, [key]: storage[key] }), {});
+        if (typeof keys === 'string') return { [keys]: storage[keys] };
+        return Object.keys(keys).reduce((acc, key) => ({ ...acc, [key]: storage[key] ?? keys[key] }), {});
+      };
+
+      const chromeMock = {
+        runtime: { lastError: null, getURL: (relative = '') => `${window.location.origin}/${relative.replace(/^\/+/, '')}` },
+        i18n: { getMessage: (key) => (key === 'clusterPartialLoadWarning' ? 'Some clusters could not be refreshed:' : '') },
+        storage: {
+          local: {
+            get: async (keys) => resolveGet(keys),
+            set: async (values) => Object.assign(storage, values || {}),
+            remove: async (keys) => {
+              const list = Array.isArray(keys) ? keys : [keys];
+              list.forEach((key) => delete storage[key]);
+            }
+          }
+        },
+        permissions: {
+          contains: (_permissions, cb) => cb(true),
+          request: (_permissions, cb) => cb(true)
+        },
+        windows: {
+          getCurrent: async () => ({ id: 1, type: 'normal' }),
+          get: async (id) => ({ id, type: 'normal', tabs: [] }),
+          update: async (id, info) => ({ id, ...info }),
+          create: async () => ({ id: 2, type: 'popup' })
+        },
+        sidePanel: { open: async () => {} },
+        tabs: {
+          create: async () => ({ id: 10 }),
+          update: async () => ({ id: 10 }),
+          query: async () => [],
+          get: async () => ({ id: 10, status: 'complete' }),
+          onUpdated: { addListener: () => {}, removeListener: () => {} }
+        },
+        scripting: { executeScript: async () => [{ result: true }] },
+        downloads: {
+          download: (_options, cb) => cb?.(1),
+          open: async () => {},
+          onChanged: { addListener: () => {}, removeListener: () => {} }
+        },
+        cookies: { get: async () => null }
+      };
+
+      const realFetch = window.fetch.bind(window);
+      window.fetch = async (input, init = {}) => {
+        const requestUrl = typeof input === 'string' ? input : input?.url;
+        if (!requestUrl) return realFetch(input, init);
+        if (requestUrl.includes('pve-staging-01') && requestUrl.includes('/api2/json/cluster/resources')) {
+          return Promise.reject(new TypeError('Failed to fetch'));
+        }
+        if (requestUrl.includes('pve-prod-01') && requestUrl.includes('/api2/json/cluster/resources')) {
+          return new Response(JSON.stringify({
+            data: [
+              { type: 'qemu', vmid: 201, name: 'prod-web-01', node: 'pve-prod-01', status: 'running', cpu: 0.2, mem: 1, maxmem: 2, disk: 1, maxdisk: 2 }
+            ]
+          }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        if (requestUrl.includes('/api2/json/')) {
+          return new Response(JSON.stringify({ data: {} }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        if (requestUrl.includes('api.github.com/repos/community-scripts/ProxmoxVE/git/trees/main')) {
+          return new Response(JSON.stringify({ tree: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        return realFetch(input, init);
+      };
+
+      window.chrome = chromeMock;
+      globalThis.chrome = chromeMock;
+    });
+
+    await page.goto(`${staticBaseUrl}/popup/popup.html`);
+    await expect(page.locator('[data-id="vm-production-201"]')).toBeVisible();
+    await expect(page.locator('#cluster-fetch-banner')).not.toHaveClass(/hidden/);
+    const stagingTab = page.locator('#cluster-tabs .cluster-tab', { hasText: 'Staging' });
+    await expect(stagingTab).toHaveClass(/cluster-tab--load-error/);
+  });
+
   test('should auto-expand VM details when default expand setting is enabled', async ({ page }) => {
     await page.addInitScript(() => {
       const storage = {

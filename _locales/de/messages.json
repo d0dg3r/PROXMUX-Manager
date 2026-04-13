@@ -140,6 +140,18 @@
     "loginNow": {
         "message": "Anmelden"
     },
+    "sessionLoginHostHint": {
+        "message": "Anmeldung für diesen Host: $HOST$",
+        "placeholders": {
+            "host": {
+                "content": "$1",
+                "example": "pve01.example.com"
+            }
+        }
+    },
+    "clusterPartialLoadWarning": {
+        "message": "Einige Cluster konnten nicht aktualisiert werden:"
+    },
     "close": {
         "message": "Schließen"
     },

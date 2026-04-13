@@ -140,6 +140,18 @@
     "loginNow": {
         "message": "Log in"
     },
+    "sessionLoginHostHint": {
+        "message": "Sign in at this host: $HOST$",
+        "placeholders": {
+            "host": {
+                "content": "$1",
+                "example": "pve01.example.com"
+            }
+        }
+    },
+    "clusterPartialLoadWarning": {
+        "message": "Some clusters could not be refreshed:"
+    },
     "close": {
         "message": "Close"
     },

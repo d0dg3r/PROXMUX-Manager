@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const inlineSettingsView = document.getElementById('inline-settings-view');
     const searchContainer = document.querySelector('.search-container');
     const clusterTabs = document.getElementById('cluster-tabs');
+    const clusterFetchBanner = document.getElementById('cluster-fetch-banner');
     const inlineProxmoxUrlInput = document.getElementById('inline-proxmox-url');
     const inlineClusterSelect = document.getElementById('inline-cluster-select');
     const inlineClusterNameInput = document.getElementById('inline-cluster-name');
@@ -231,6 +232,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activeClusterTabId = ALL_CLUSTERS_TAB_ID;
     const apiClients = new Map();
     const resourcesByClusterId = new Map();
+    const clusterLoadErrors = new Map();
+    let pendingSessionLoginUrl = '';
     const pendingStatusOverrides = new Map();
     const tagFiltersContainer = document.getElementById('tag-filters');
     const tagFiltersSection = tagFiltersContainer?.closest('.filter-section-tags');
@@ -2317,16 +2320,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
         clusterTabs.appendChild(allTab);
 
+        const multiTab = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
+        if (clusterLoadErrors.size > 0 && multiTab) {
+            const hintParts = [];
+            clusterLoadErrors.forEach((entry, id) => {
+                const name = clusters[id]?.name || id;
+                hintParts.push(`${name}: ${entry.message}`);
+            });
+            allTab.title = hintParts.join('; ');
+        } else {
+            allTab.removeAttribute('title');
+        }
+
         enabledClusters.forEach((cluster) => {
             const tab = document.createElement('button');
             tab.type = 'button';
-            tab.className = `cluster-tab ${activeClusterTabId === cluster.id ? 'active' : ''}`;
+            const err = clusterLoadErrors.get(cluster.id);
+            tab.className = `cluster-tab ${activeClusterTabId === cluster.id ? 'active' : ''}${err ? ' cluster-tab--load-error' : ''}`;
             tab.dataset.clusterTab = cluster.id;
             tab.dataset.clusterColor = getClusterColorToken(cluster.id);
-            tab.title = cluster.name;
+            tab.title = err ? `${cluster.name}: ${err.message}` : cluster.name;
             tab.innerHTML = `<span class="cluster-status-dot"></span><span>${cluster.name}</span>`;
             clusterTabs.appendChild(tab);
         });
+        updateClusterFetchBanner();
         updateClusterTabsVisibility();
     }
 
@@ -2357,6 +2374,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             activeFilters = normalizeActiveFilters(null);
         }
         syncFilterPillsFromState();
+        clusterLoadErrors.clear();
         renderClusterTabs();
         await persistClusterContext();
         await fetchAndRender(true);
@@ -2572,25 +2590,129 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    function sameUrlSet(a = [], b = []) {
+        if (a.length !== b.length) return false;
+        const setA = new Set(a);
+        return b.every((u) => setA.has(u));
+    }
+
+    function buildFailoverUrlList(primaryUrl, resources) {
+        try {
+            const nodes = resources.filter((res) => res.type === 'node');
+            if (nodes.length <= 1) return null;
+            const urlObj = new URL(primaryUrl);
+            const port = urlObj.port;
+            const protocol = urlObj.protocol;
+            const failoverUrls = nodes.map((n) =>
+                (port ? `${protocol}//${n.node}:${port}` : `${protocol}//${n.node}`).replace(/\/$/, '')
+            );
+            const primary = primaryUrl.replace(/\/$/, '');
+            return [...new Set([primary, ...failoverUrls])];
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    async function syncFailoverFromResources() {
+        let changed = false;
+        for (const cluster of getEnabledClusters()) {
+            if (!cluster.proxmoxUrl) continue;
+            const res = resourcesByClusterId.get(cluster.id);
+            if (!res || res.length === 0) continue;
+            const uniqueUrls = buildFailoverUrlList(cluster.proxmoxUrl, res);
+            if (!uniqueUrls) continue;
+            const prev = Array.isArray(cluster.failoverUrls) ? cluster.failoverUrls.map((u) => u.replace(/\/$/, '')) : [];
+            if (sameUrlSet(uniqueUrls, prev)) continue;
+            clusters[cluster.id] = { ...clusters[cluster.id], failoverUrls: uniqueUrls };
+            changed = true;
+        }
+        if (changed) {
+            await saveClustersState(clusters, activeClusterId);
+            syncClusterApiClients();
+        }
+    }
+
+    function resetLoadingOverlayContent() {
+        const connecting = chrome.i18n.getMessage('connecting') || 'Connecting to Proxmox...';
+        loadingOverlay.innerHTML = `<div class="spinner"></div><p>${escapeHtml(connecting)}</p>`;
+    }
+
+    function dismissLoadingErrorOverlayIfPresent() {
+        if (!loadingOverlay.dataset.loadError) return;
+        delete loadingOverlay.dataset.loadError;
+        resetLoadingOverlayContent();
+        loadingOverlay.classList.add('hidden');
+    }
+
+    function updateClusterFetchBanner() {
+        if (!clusterFetchBanner) return;
+        const multi = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
+        if (!multi || clusterLoadErrors.size === 0) {
+            clusterFetchBanner.classList.add('hidden');
+            clusterFetchBanner.textContent = '';
+            return;
+        }
+        const label = escapeHtml(chrome.i18n.getMessage('clusterPartialLoadWarning') || 'Some clusters could not be refreshed:');
+        const parts = [];
+        clusterLoadErrors.forEach((entry, id) => {
+            const name = escapeHtml(clusters[id]?.name || id);
+            const msg = escapeHtml(entry?.message || '');
+            parts.push(`<strong>${name}</strong> — ${msg}`);
+        });
+        clusterFetchBanner.innerHTML = `<span class="cluster-fetch-banner-label">${label}</span>${parts.join(' ')}`;
+        clusterFetchBanner.classList.remove('hidden');
+    }
+
     const fetchAndRender = async (showLoading = false) => {
-        if (showLoading) loadingOverlay.classList.remove('hidden');
+        let suppressLoadingHide = false;
+        if (showLoading) {
+            delete loadingOverlay.dataset.loadError;
+            resetLoadingOverlayContent();
+            loadingOverlay.classList.remove('hidden');
+        }
         try {
             const enabledClusters = getEnabledClusters();
-            resourcesByClusterId.clear();
-            if (activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID) {
-                const results = await Promise.all(enabledClusters.map(async (cluster) => {
+            const previousByCluster = new Map(resourcesByClusterId);
+            const isMultiClusterView = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
+            clusterLoadErrors.clear();
+            if (isMultiClusterView) {
+                resourcesByClusterId.clear();
+            }
+
+            if (isMultiClusterView) {
+                const settled = await Promise.allSettled(enabledClusters.map(async (cluster) => {
                     const client = apiClients.get(cluster.id);
-                    if (!client) return [];
+                    if (!client) {
+                        return { clusterId: cluster.id, tagged: [] };
+                    }
                     const resources = await client.getResources();
                     const tagged = resources.map((resource) => ({
                         ...resource,
                         __clusterId: cluster.id,
                         __clusterName: cluster.name
                     }));
-                    resourcesByClusterId.set(cluster.id, tagged);
-                    return tagged;
+                    return { clusterId: cluster.id, tagged };
                 }));
-                allResources = results.flat();
+
+                settled.forEach((result, index) => {
+                    const cluster = enabledClusters[index];
+                    if (result.status === 'fulfilled') {
+                        const { tagged } = result.value;
+                        resourcesByClusterId.set(cluster.id, tagged);
+                    } else {
+                        const err = result.reason;
+                        const message = err && typeof err.message === 'string' ? err.message : String(err);
+                        clusterLoadErrors.set(cluster.id, { message });
+                        const prev = previousByCluster.get(cluster.id);
+                        if (prev && prev.length) {
+                            resourcesByClusterId.set(cluster.id, prev);
+                        } else {
+                            resourcesByClusterId.set(cluster.id, []);
+                        }
+                    }
+                });
+
+                allResources = Array.from(resourcesByClusterId.values()).flat();
             } else {
                 const cluster = clusters[activeClusterTabId] || clusters[activeClusterId];
                 const clusterId = cluster?.id;
@@ -2598,14 +2720,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!client || !clusterId) {
                     allResources = [];
                 } else {
-                    const resources = await client.getResources();
-                    allResources = resources.map((resource) => ({
-                        ...resource,
-                        __clusterId: clusterId,
-                        __clusterName: cluster.name
-                    }));
-                    resourcesByClusterId.set(clusterId, allResources);
-                    api = client;
+                    try {
+                        const resources = await client.getResources();
+                        allResources = resources.map((resource) => ({
+                            ...resource,
+                            __clusterId: clusterId,
+                            __clusterName: cluster.name
+                        }));
+                        resourcesByClusterId.set(clusterId, allResources);
+                        api = client;
+                    } catch (err) {
+                        const message = err && typeof err.message === 'string' ? err.message : String(err);
+                        clusterLoadErrors.set(clusterId, { message });
+                        const prev = previousByCluster.get(clusterId);
+                        allResources = prev && prev.length ? prev : [];
+                        if (prev && prev.length) {
+                            resourcesByClusterId.set(clusterId, prev);
+                        }
+                    }
                 }
             }
 
@@ -2629,24 +2761,41 @@ document.addEventListener('DOMContentLoaded', async () => {
             const tagFilterSource = activeClusterTabId === FAVORITES_TAB_ID
                 ? allResources.filter((resource) => isFavoriteResource(resource))
                 : allResources;
+            renderClusterTabs();
             renderTagFilters(tagFilterSource);
             filterAndRender();
             renderScriptNodeOptions(allResources);
+            await syncFailoverFromResources();
+            dismissLoadingErrorOverlayIfPresent();
         } catch (error) {
             console.error('Proxmox API Error:', error);
+            suppressLoadingHide = true;
             if (showLoading) {
+                loadingOverlay.dataset.loadError = '1';
                 const safeMessage = escapeHtml(error && typeof error.message === 'string' ? error.message : error);
+                const title = escapeHtml(chrome.i18n.getMessage('connectionFailed') || 'Connection Failed');
+                const retryLabel = escapeHtml(chrome.i18n.getMessage('retry') || 'Retry');
                 loadingOverlay.innerHTML = `
                     <div style="color:var(--error); padding: 20px;">
-                        <p><strong>Connection Failed</strong></p>
+                        <p><strong>${title}</strong></p>
                         <p style="font-size: 0.8rem; margin: 10px 0;">${safeMessage}</p>
-                        <button id="retry-btn" class="action-btn" style="margin-top: 15px;">Retry</button>
+                        <button id="retry-btn" class="action-btn" style="margin-top: 15px;">${retryLabel}</button>
                     </div>
                 `;
-                document.getElementById('retry-btn').addEventListener('click', () => fetchAndRender(true));
+                const retryBtn = document.getElementById('retry-btn');
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', () => {
+                        delete loadingOverlay.dataset.loadError;
+                        fetchAndRender(true);
+                    });
+                }
             }
         } finally {
-            if (showLoading) loadingOverlay.classList.add('hidden');
+            if (showLoading && !suppressLoadingHide) {
+                delete loadingOverlay.dataset.loadError;
+                resetLoadingOverlayContent();
+                loadingOverlay.classList.add('hidden');
+            }
         }
     };
 
@@ -2669,7 +2818,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initial load
     await setActiveClusterTab(activeClusterTabId || activeClusterId || ALL_CLUSTERS_TAB_ID);
     renderTagFilters(allResources);
-    updateFailoverNodes(allResources, settings.proxmoxUrl);
 
     async function renderResources(resources) {
         resourceList.innerHTML = '';
@@ -3117,11 +3265,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const closeSessionErrorBtn = document.getElementById('close-session-error');
 
     loginBtn.addEventListener('click', () => {
-        chrome.tabs.create({ url: settings.proxmoxUrl });
+        const url = (pendingSessionLoginUrl || settings.proxmoxUrl || '').trim();
+        if (url) {
+            chrome.tabs.create({ url: url.replace(/\/$/, '') });
+        }
+        pendingSessionLoginUrl = '';
+        const hostEl = document.getElementById('session-error-host');
+        if (hostEl) {
+            hostEl.textContent = '';
+            hostEl.classList.add('hidden');
+        }
         sessionErrorOverlay.classList.add('hidden');
     });
 
     closeSessionErrorBtn.addEventListener('click', () => {
+        pendingSessionLoginUrl = '';
+        const hostEl = document.getElementById('session-error-host');
+        if (hostEl) {
+            hostEl.textContent = '';
+            hostEl.classList.add('hidden');
+        }
         sessionErrorOverlay.classList.add('hidden');
     });
 
@@ -3378,6 +3541,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!hasSession) {
                 console.log('[Popup] Showing session error overlay');
                 debugStatus.textContent = 'Session invalid. Login required.';
+                pendingSessionLoginUrl = (clusterUrl || settings.proxmoxUrl || '').trim().replace(/\/$/, '');
+                const sessionErrorHost = document.getElementById('session-error-host');
+                if (sessionErrorHost) {
+                    let hostLine = '';
+                    try {
+                        const host = pendingSessionLoginUrl ? new URL(pendingSessionLoginUrl).hostname : '';
+                        if (host) {
+                            hostLine = chrome.i18n.getMessage('sessionLoginHostHint', [host])
+                                || `Sign in at this host: ${host}`;
+                        }
+                    } catch (_e) {
+                        hostLine = '';
+                    }
+                    if (hostLine) {
+                        sessionErrorHost.textContent = hostLine;
+                        sessionErrorHost.classList.remove('hidden');
+                    } else {
+                        sessionErrorHost.textContent = '';
+                        sessionErrorHost.classList.add('hidden');
+                    }
+                }
                 sessionErrorOverlay.classList.remove('hidden');
                 return null;
             }
@@ -3650,29 +3834,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (m > 0 || parts.length === 0) parts.push(`${m}m`);
         
         return parts.join(' ');
-    }
-
-    async function updateFailoverNodes(resources, primaryUrl) {
-        try {
-            const nodes = resources.filter(res => res.type === 'node');
-            if (nodes.length <= 1) return;
-
-            const urlObj = new URL(primaryUrl);
-            const port = urlObj.port;
-            const protocol = urlObj.protocol;
-
-            // Generate URLs for all nodes using the same port (or no explicit port if primary has none)
-            const failoverUrls = nodes.map(n =>
-                port ? `${protocol}//${n.node}:${port}` : `${protocol}//${n.node}`
-            );
-            
-            // Unique URLs including the primary one
-            const uniqueUrls = [...new Set([primaryUrl, ...failoverUrls])];
-            
-            await chrome.storage.local.set({ failoverUrls: uniqueUrls });
-        } catch (e) {
-            console.error('Failed to update failover nodes:', e);
-        }
     }
 
     function formatBytes(bytes, decimals = 2) {

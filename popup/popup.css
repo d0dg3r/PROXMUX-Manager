@@ -267,6 +267,39 @@ header {
     border-bottom: 1px solid var(--border);
 }
 
+.cluster-fetch-banner {
+    margin: 0 18px 10px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--error);
+    background: color-mix(in srgb, var(--error) 12%, var(--tag-bg));
+    border: 1px solid color-mix(in srgb, var(--error) 35%, var(--border));
+    border-radius: 8px;
+}
+
+.cluster-fetch-banner-label {
+    font-weight: 650;
+    margin-right: 6px;
+}
+
+.cluster-tab.cluster-tab--load-error {
+    border-color: color-mix(in srgb, var(--error) 55%, var(--border));
+    color: color-mix(in srgb, var(--error) 88%, var(--text-primary));
+}
+
+.cluster-tab.cluster-tab--load-error .cluster-status-dot {
+    background: var(--error);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 40%, transparent);
+}
+
+.session-error-host {
+    font-size: 0.82rem;
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
 .cluster-tab {
     border: 1px solid var(--border);
     background: color-mix(in srgb, var(--tag-bg) 86%, transparent);
