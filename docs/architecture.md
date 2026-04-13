@@ -35,7 +35,7 @@ The extension uses a shared UI for Side Panel and Floating Window contexts.
 - **`popup.html`**: Defines the searchable resource list and filter system.
 - **`popup.js`**: Handles state management, filtering, inline settings view toggling, and event delegation. It interacts with `ProxmoxAPI` to fetch data and launch consoles.
 - **Adaptive Density Controls**: Global `uiScale` is applied as a CSS variable and synchronized live across popup/sidepanel/options via storage events.
-- **Multi-Cluster Tabs**: Supports per-cluster context tabs plus an `All Clusters` aggregation mode, including scoped UI state persistence.
+- **Multi-Cluster Tabs**: Supports per-cluster context tabs plus an `All Clusters` aggregation mode, including scoped UI state persistence. Aggregated refresh uses independent per-cluster fetches; failures are surfaced per tab and in a banner without discarding successful clusters. Cached per-cluster resource maps are only fully rebuilt in aggregated views so single-tab refreshes preserve other clusters’ last-known lists.
 - **No-Config Guided Entry**: Provides direct CTA routing to either `Cluster` configuration or `Backup & Restore` import-first onboarding.
 - **Status + Metrics Readability**: Resource status indicators/filters and stat-row value alignment are tuned for consistent visual scanning in dense lists.
 - **i18n**: Fully localized using `chrome.i18n` for English and German.
@@ -48,7 +48,7 @@ The extension uses a shared UI for Side Panel and Floating Window contexts.
 Uses `chrome.storage.local` to store:
 - Cluster map (`clusters`) with per-cluster credentials and active cluster context (`activeClusterId`, `activeClusterTabId`).
 - API Credentials legacy fallback keys (kept synchronized for compatibility).
-- Failover Node URLs (discovered dynamically).
+- Failover node URLs per cluster (`clusters[id].failoverUrls`, discovered from live node lists).
 - User preferences (theme, display settings, toolbar click mode).
 - Global UI scale (`uiScale`) for unified sizing across all extension surfaces.
 - SSH export preferences (global defaults, key catalog, per-host overrides, shared host defaults, selected export format).
@@ -62,18 +62,19 @@ Uses `localStorage` for popup session UX state:
 ## 4. Key Flows
 
 ### 4.1 Resource Loading & Failover
-1. Extension triggers `api.getResources()`.
+1. Extension triggers `api.getResources()` on the relevant `ProxmoxAPI` client (per cluster).
 2. `ProxmoxAPI` tries the primary URL.
-3. If it fails (Network Error), it iterates through `failoverUrls`.
+3. If it fails (Network Error), it iterates through that client’s `failoverUrls`.
 4. On success, it updates the `currentUrl` for the current session and returns data.
-5. `popup.js` then calls `updateFailoverNodes()` to keep the node list fresh.
+5. `popup.js` runs `syncFailoverFromResources()` after a successful render to derive node-based failover URL lists **per cluster**, persist them on `clusters[id].failoverUrls` via `saveClustersState`, and refresh `apiClients`.
+6. In `All Clusters` / `Favorites`, fetches run in parallel with `Promise.allSettled`; failures record `clusterLoadErrors`, keep prior resources for that cluster when available, and still render other clusters.
 
 ### 4.2 Console Authorization
 Before opening a `novnc` or `shell` URL, the extension:
 1. Calls `api.checkSession()`.
 2. Verifies the presence of `PVEAuthCookie` via `chrome.cookies.get`.
 3. Performs a fallback `fetch` with `credentials: 'include'` to double-check.
-4. If invalid, displays the **Login Required** overlay.
+4. If invalid, displays the **Login Required** overlay with the **Proxmox base URL of the cluster** being used; **Log in** opens that URL in a new tab (fallback: active cluster URL from settings context).
 
 ### 4.3 Power Action Status Synchronization
 Power actions (`start`, `shutdown`, `stop`, `reboot`) are handled with a two-stage strategy:

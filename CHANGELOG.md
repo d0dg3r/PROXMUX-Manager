@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-04-13
+
+### Added
+- **Partial cluster load feedback**: In `All Clusters` / `Favorites`, per-cluster refresh failures show a compact banner, error styling on the cluster tab (with tooltip), and English/German strings for the host login hint and partial-load summary.
+- **E2E coverage**: Playwright scenario asserting partial failure (one cluster rejects `cluster/resources`) while another cluster still renders.
+
+### Fixed
+- **Console session login host**: `Log in` from the session-required overlay opens the Proxmox base URL of the cluster you tried to use, not only the globally active cluster; optional host line clarifies where to authenticate.
+- **Connection overlay UX**: Loading error UI stays visible until **Retry** or a successful load; a later header refresh dismisses a stuck error overlay even when the silent refresh path is used.
+- **Multi-cluster refresh isolation**: `All Clusters` / `Favorites` loads use `Promise.allSettled` so one failing cluster does not block the rest; last-known resources for a failed cluster are kept when available.
+- **Cross-cluster cache on single-tab refresh**: Cached `resourcesByClusterId` entries for clusters not currently being refreshed are preserved instead of clearing the entire map on every fetch.
+- **Per-cluster failover persistence**: Discovered node URLs are written to `clusters[id].failoverUrls` and saved with cluster state (replacing ineffective legacy top-level `failoverUrls` writes for multi-cluster clients).
+
 ## [1.2.1] - 2026-03-16
 
 ### Added
@@ -197,6 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Side Panel support for persistent cluster management.
 - Proxmox API integration for resource monitoring.
 
+[1.2.2]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.1-beta.2...v1.2.1
 [1.2.1-beta.2]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.0...v1.2.1-beta.2
 [1.2.0]: https://github.com/d0dg3r/PROXMUX-Manager/compare/v1.2.0-beta.3...v1.2.0
