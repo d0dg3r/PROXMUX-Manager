@@ -2637,6 +2637,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadingOverlay.innerHTML = `<div class="spinner"></div><p>${escapeHtml(connecting)}</p>`;
     }
 
+    function dismissLoadingErrorOverlayIfPresent() {
+        if (!loadingOverlay.dataset.loadError) return;
+        delete loadingOverlay.dataset.loadError;
+        resetLoadingOverlayContent();
+        loadingOverlay.classList.add('hidden');
+    }
+
     function updateClusterFetchBanner() {
         if (!clusterFetchBanner) return;
         const multi = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
@@ -2666,10 +2673,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const enabledClusters = getEnabledClusters();
             const previousByCluster = new Map(resourcesByClusterId);
-            resourcesByClusterId.clear();
+            const isMultiClusterView = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
             clusterLoadErrors.clear();
+            if (isMultiClusterView) {
+                resourcesByClusterId.clear();
+            }
 
-            if (activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID) {
+            if (isMultiClusterView) {
                 const settled = await Promise.allSettled(enabledClusters.map(async (cluster) => {
                     const client = apiClients.get(cluster.id);
                     if (!client) {
@@ -2756,6 +2766,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             filterAndRender();
             renderScriptNodeOptions(allResources);
             await syncFailoverFromResources();
+            dismissLoadingErrorOverlayIfPresent();
         } catch (error) {
             console.error('Proxmox API Error:', error);
             suppressLoadingHide = true;
