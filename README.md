@@ -125,6 +125,13 @@ If PROXMUX only shows nodes but not VMs/LXCs, validate token rights first (`Sys.
   - `store/screenshot_04_settings_cluster_1280x800.png`
   - `store/screenshot_05_settings_backup_1280x800.png`
 
+## What's New in v1.2.2
+
+- **Multi-cluster refresh**: `All Clusters` / `Favorites` refresh each cluster independently; failures show a banner and highlight the affected tab while other clusters keep working.
+- **Session login target**: Opening a console without a browser Proxmox session shows which host to use; **Log in** opens that cluster’s URL (not only the active cluster context).
+- **Clearer connection errors**: The loading error panel stays until you retry or the list loads successfully; a normal header refresh also clears a stuck error state.
+- **Safer cache + failover**: Single-cluster refreshes no longer wipe cached resources for other clusters; discovered failover URLs are stored per cluster in settings.
+
 ## What's New in v1.2.1
 
 - **Global UI Scaling**: Added presets plus fine slider with live sync between open popup/sidepanel/options surfaces.

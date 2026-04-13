@@ -27,7 +27,7 @@ This document outlines the planned features, improvements, and technical debt fo
 - [ ] **Out of Scope (v1.4.0)**: No automatic snapshot schedules/policies in the first snapshot release.
 
 ### Future Ideas
-- [ ] **Multi-Cluster Support**: Manage multiple Proxmox clusters with a quick-switch toggle.
+- [ ] **Multi-Cluster Enhancements**: Optional quick-switch shortcuts, per-cluster health summaries, or cross-cluster capacity views (core multi-cluster tabs and aggregation are already implemented).
 - [ ] **Backup Monitoring**: View recent backup tasks and their status.
 - [ ] **Dark/Light Mode Toggle**: Manual override for the system-wide theme setting.
 
