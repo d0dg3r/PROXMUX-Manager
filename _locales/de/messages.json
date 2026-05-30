@@ -149,6 +149,60 @@
             }
         }
     },
+    "sessionBannerTitle": {
+        "message": "Nicht im Proxmox angemeldet"
+    },
+    "sessionBannerText": {
+        "message": "Die Ressourcenliste funktioniert über deinen API-Token. Konsolen (noVNC, Shell, SPICE) brauchen eine Browser-Anmeldung."
+    },
+    "sessionBannerTextMulti": {
+        "message": "In einigen Clustern besteht keine aktive Browser-Sitzung. Konsolen für diese Cluster benötigen eine Anmeldung."
+    },
+    "sessionBannerLogin": {
+        "message": "Anmelden"
+    },
+    "sessionBannerHost": {
+        "message": "Betroffener Host: $HOST$",
+        "placeholders": {
+            "host": {
+                "content": "$1",
+                "example": "pve01.example.com"
+            }
+        }
+    },
+    "sessionBannerHosts": {
+        "message": "Betroffene Hosts: $HOSTS$",
+        "placeholders": {
+            "hosts": {
+                "content": "$1",
+                "example": "pve01.example.com, pve02.example.com"
+            }
+        }
+    },
+    "dismiss": {
+        "message": "Schließen"
+    },
+    "emptyListNoMatchesTitle": {
+        "message": "Keine Ressourcen passen zu deiner Suche"
+    },
+    "emptyListNoMatchesText": {
+        "message": "Lösche die Suche oder aktiviere mehr Filter."
+    },
+    "emptyListClearFilters": {
+        "message": "Filter zurücksetzen"
+    },
+    "emptyListClusterEmptyTitle": {
+        "message": "Cluster erreichbar, aber ohne Ressourcen"
+    },
+    "emptyListClusterEmptyText": {
+        "message": "Die Proxmox-API hat eine leere Liste zurückgegeben. Wenn das nicht erwartet ist, fehlen deinem API-Token vermutlich Audit-Rechte für VMs/Container."
+    },
+    "emptyListNotConnectedTitle": {
+        "message": "Keine Ressourcen anzuzeigen"
+    },
+    "emptyListNotConnectedText": {
+        "message": "Falls hier Ressourcen erscheinen sollten: prüfe deinen API-Token, ob der Proxmox-Host erreichbar ist, und ob du dich in diesem Browser mindestens einmal am Cluster angemeldet hast."
+    },
     "clusterPartialLoadWarning": {
         "message": "Einige Cluster konnten nicht aktualisiert werden:"
     },
@@ -490,5 +544,227 @@
     },
     "sshExportCopyBtn": {
         "message": "SSH-Config kopieren"
+    },
+    "expandDetailsDefault": {
+        "message": "Details standardmäßig ausklappen"
+    },
+    "machineDetailsLabel": {
+        "message": "Maschinen-Details"
+    },
+    "helpQuickSetupTitle": {
+        "message": "Schnellstart"
+    },
+    "helpQuickSetupDescription": {
+        "message": "Es ist noch kein Cluster konfiguriert. Mit diesem Ablauf bist du in unter zwei Minuten startklar."
+    },
+    "helpQuickSetupPointToken": {
+        "message": "Erzeuge oder kopiere dein Proxmox-API-Token."
+    },
+    "helpQuickSetupPointClusterSettings": {
+        "message": "Öffne die Cluster-Einstellungen und trage URL, Benutzer, Token-ID und Secret ein."
+    },
+    "helpQuickSetupPointImportBackup": {
+        "message": "Oder importiere ein vorhandenes verschlüsseltes Backup."
+    },
+    "helpQuickSetupOpenClusterSettings": {
+        "message": "Cluster-Einstellungen öffnen"
+    },
+    "helpQuickSetupOpenBackupImport": {
+        "message": "Backup & Import öffnen"
+    },
+    "powerConfirmStop": {
+        "message": "Erneut klicken zum Stoppen"
+    },
+    "powerConfirmShutdown": {
+        "message": "Erneut klicken zum Herunterfahren"
+    },
+    "powerConfirmReboot": {
+        "message": "Erneut klicken zum Neustarten"
+    },
+    "powerConfirmPause": {
+        "message": "Erneut klicken zum Pausieren"
+    },
+    "powerConfirmResume": {
+        "message": "Erneut klicken zum Fortsetzen"
+    },
+    "powerActionStart": {
+        "message": "Starten"
+    },
+    "powerActionShutdown": {
+        "message": "Herunterfahren"
+    },
+    "powerActionStop": {
+        "message": "Stoppen"
+    },
+    "powerActionReboot": {
+        "message": "Neustarten"
+    },
+    "powerActionPause": {
+        "message": "Pausieren"
+    },
+    "powerActionResume": {
+        "message": "Fortsetzen"
+    },
+    "autoRefreshLabel": {
+        "message": "Auto-Refresh"
+    },
+    "autoRefreshHelp": {
+        "message": "Aktualisiert die aktive Ansicht automatisch. Pausiert, solange die Einstellungen geöffnet sind."
+    },
+    "autoRefreshOff": {
+        "message": "Aus (manuell)"
+    },
+    "autoRefresh15s": {
+        "message": "Alle 15 Sekunden"
+    },
+    "autoRefresh30s": {
+        "message": "Alle 30 Sekunden"
+    },
+    "autoRefresh60s": {
+        "message": "Alle 60 Sekunden"
+    },
+    "autoRefresh120s": {
+        "message": "Alle 2 Minuten"
+    },
+    "autoRefresh300s": {
+        "message": "Alle 5 Minuten"
+    },
+    "skipPowerConfirmationsLabel": {
+        "message": "Power-Bestätigungen überspringen"
+    },
+    "skipPowerConfirmationsHelp": {
+        "message": "Wenn aktiv, werden Stop/Shutdown/Reboot/Pause ohne Rückfrage sofort ausgeführt."
+    },
+    "groupByNodeLabel": {
+        "message": "Ressourcen nach Node gruppieren"
+    },
+    "groupByNodeHelp": {
+        "message": "VMs und LXCs werden in der Liste unter ihrem Host-Node gruppiert."
+    },
+    "showClusterDashboardLabel": {
+        "message": "Cluster-Dashboard anzeigen"
+    },
+    "showClusterDashboardHelp": {
+        "message": "Zeigt aggregierte CPU-, RAM- und Storage-Werte am Listenanfang."
+    },
+    "snapshotsTitle": {
+        "message": "Snapshots"
+    },
+    "snapshotsLoading": {
+        "message": "Snapshots werden geladen..."
+    },
+    "snapshotsLoadFailed": {
+        "message": "Snapshots konnten nicht geladen werden."
+    },
+    "snapshotsEmpty": {
+        "message": "Noch keine Snapshots vorhanden."
+    },
+    "snapshotsCurrentLabel": {
+        "message": "Aktueller Stand"
+    },
+    "snapshotsCreateBtn": {
+        "message": "Snapshot anlegen"
+    },
+    "snapshotsRollbackBtn": {
+        "message": "Rollback"
+    },
+    "snapshotsDeleteBtn": {
+        "message": "Löschen"
+    },
+    "snapshotsCreatedSuccess": {
+        "message": "Snapshot erstellt."
+    },
+    "snapshotsDeletedSuccess": {
+        "message": "Snapshot gelöscht."
+    },
+    "snapshotsRollbackSuccess": {
+        "message": "Rollback gestartet. Bitte abwarten, bis der Task abgeschlossen ist."
+    },
+    "snapshotsCreatePromptName": {
+        "message": "Snapshot-Name"
+    },
+    "snapshotsCreatePromptDescription": {
+        "message": "Beschreibung (optional)"
+    },
+    "snapshotsCreatePromptInvalid": {
+        "message": "Snapshot-Name muss mit einem Buchstaben beginnen und darf nur Buchstaben, Ziffern, _, - enthalten."
+    },
+    "snapshotsConfirmDelete": {
+        "message": "Erneut klicken zum Löschen"
+    },
+    "snapshotsConfirmRollback": {
+        "message": "Erneut klicken für Rollback"
+    },
+    "snapshotsActionFailed": {
+        "message": "Snapshot-Aktion fehlgeschlagen:"
+    },
+    "snapshotsCancel": {
+        "message": "Abbrechen"
+    },
+    "snapshotsConfirm": {
+        "message": "Anlegen"
+    },
+    "snapshotsTaskRunningSuffix": {
+        "message": "(Task läuft)"
+    },
+    "tasksRecentTitle": {
+        "message": "Letzte Cluster-Tasks"
+    },
+    "tasksRefreshBtn": {
+        "message": "Tasks aktualisieren"
+    },
+    "tasksLoading": {
+        "message": "Tasks werden geladen..."
+    },
+    "tasksLoadFailed": {
+        "message": "Cluster-Tasks konnten nicht geladen werden."
+    },
+    "tasksEmpty": {
+        "message": "Keine aktuellen Tasks."
+    },
+    "tasksStatusOk": {
+        "message": "OK"
+    },
+    "tasksStatusRunning": {
+        "message": "Läuft"
+    },
+    "tasksStatusFailed": {
+        "message": "Fehlgeschlagen"
+    },
+    "dashboardCpuLabel": {
+        "message": "CPU-Auslastung"
+    },
+    "dashboardMemLabel": {
+        "message": "RAM-Auslastung"
+    },
+    "dashboardStorageLabel": {
+        "message": "Storage-Auslastung"
+    },
+    "dashboardNodesLabel": {
+        "message": "Online-Nodes"
+    },
+    "dashboardGuestsLabel": {
+        "message": "Laufende Gäste"
+    },
+    "groupNodeHeader": {
+        "message": "Node"
+    },
+    "connectionFailedSelfSignedHint": {
+        "message": "Bei Self-signed Zertifikaten: Proxmox-URL einmal im Browser öffnen, akzeptieren und dann Wiederholen klicken."
+    },
+    "connectionOpenProxmoxBtn": {
+        "message": "Proxmox-URL öffnen"
+    },
+    "connectionFailedKindNetwork": {
+        "message": "Netzwerk- oder Zertifikatsproblem."
+    },
+    "connectionFailedKindAuth": {
+        "message": "Authentifizierung fehlgeschlagen: prüfe Benutzer/Realm, Token-ID und Secret."
+    },
+    "connectionFailedKindTimeout": {
+        "message": "Die Anfrage ist abgelaufen, bevor Proxmox geantwortet hat."
+    },
+    "connectionFailedKindHttpsOnly": {
+        "message": "Die Proxmox-URL muss HTTPS verwenden."
     }
 }

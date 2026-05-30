@@ -125,10 +125,24 @@ If PROXMUX only shows nodes but not VMs/LXCs, validate token rights first (`Sys.
   - `store/screenshot_04_settings_cluster_1280x800.png`
   - `store/screenshot_05_settings_backup_1280x800.png`
 
+## What's New in v1.3.0
+
+- **Session Banner**: A clear hint when you are not signed in to the Proxmox cluster. The resource list still works through the API token, but consoles need a browser sign-in — the banner says so and offers a one-click `Sign in`.
+- **Empty-State Hints**: Instead of an empty list, the popup now explains why: filter mismatch, an actually empty cluster, or a cluster you have not signed into yet — each with a tailored next step.
+- **Cluster Dashboard**: Optional summary tiles for cluster CPU, memory, storage, and node/guest health at the top of the resource list, with severity coloring.
+- **Group by Node**: Optional grouping with sticky node headers and per-node guest counts for large clusters.
+- **Snapshot Management**: List, create, delete, and roll back QEMU/LXC snapshots from the resource detail card with two-step destructive confirmations.
+- **Auto-Refresh**: Pick an interval (`Off`, `15s`, `30s`, `60s`, `2m`, `5m`) for the active tab; auto-refresh pauses while inline settings are open.
+- **Power Confirmations**: Two-step confirmation for `stop`, `shutdown`, `reboot`, `pause`, `resume`, and `suspend` on guests and nodes, with an opt-out toggle.
+- **Pause / Resume**: First-class pause/resume buttons for QEMU guests, fully localized.
+- **Recent Cluster Tasks**: Compact task panel below the dashboard showing the latest entries from `/cluster/tasks` with running/ok/failed states.
+- **TLS-Aware Connection Errors**: Self-signed-certificate failures now show a tailored hint and an `Open Proxmox URL` action so the certificate can be accepted in one click.
+- **Lazy + Throttled Detail Fetch**: Per-resource OS/IP/disk lookups run only on expand and cap concurrent requests at 4, keeping large clusters responsive.
+
 ## What's New in v1.2.2
 
 - **Multi-cluster refresh**: `All Clusters` / `Favorites` refresh each cluster independently; failures show a banner and highlight the affected tab while other clusters keep working.
-- **Session login target**: Opening a console without a browser Proxmox session shows which host to use; **Log in** opens that cluster’s URL (not only the active cluster context).
+- **Session login target**: Opening a console without a browser Proxmox session shows which host to use; **Log in** opens that cluster's URL (not only the active cluster context).
 - **Clearer connection errors**: The loading error panel stays until you retry or the list loads successfully; a normal header refresh also clears a stuck error state.
 - **Safer cache + failover**: Single-cluster refreshes no longer wipe cached resources for other clusters; discovered failover URLs are stored per cluster in settings.
 

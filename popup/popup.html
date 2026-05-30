@@ -40,6 +40,22 @@
         </header>
         <div id="cluster-tabs" class="cluster-tabs hidden" aria-label="Cluster tabs"></div>
         <div id="cluster-fetch-banner" class="cluster-fetch-banner hidden" role="status" aria-live="polite"></div>
+        <div id="session-banner" class="session-banner hidden" role="status" aria-live="polite">
+            <div class="session-banner-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12c5.16-1.26 9-6.45 9-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z"/></svg>
+            </div>
+            <div class="session-banner-body">
+                <div class="session-banner-title" data-i18n="sessionBannerTitle">Not signed in to Proxmox</div>
+                <div class="session-banner-text" data-i18n="sessionBannerText">The resource list works through your API token. Consoles (noVNC, Shell, SPICE) need a browser sign-in.</div>
+                <div id="session-banner-host" class="session-banner-host hidden"></div>
+            </div>
+            <div class="session-banner-actions">
+                <button type="button" id="session-banner-login" class="session-banner-login" data-i18n="sessionBannerLogin">Sign in</button>
+                <button type="button" id="session-banner-dismiss" class="session-banner-dismiss" data-i18n-title="dismiss" data-i18n-aria-label="dismiss" title="Dismiss" aria-label="Dismiss">
+                    <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M18.3,5.71L12,12L5.71,5.71L4.29,7.12L10.59,13.41L4.29,19.71L5.71,21.12L12,14.83L18.3,21.12L19.71,19.71L13.41,13.41L19.71,7.12L18.3,5.71Z"/></svg>
+                </button>
+            </div>
+        </div>
         <div class="search-container">
                 <div class="search-wrapper">
                     <div class="search-icon">
@@ -98,6 +114,29 @@
                                 <label class="setting-chip" for="expand-details-default">
                                     <input type="checkbox" id="expand-details-default">
                                     <span class="setting-chip-label filter-pill" data-i18n="expandDetailsDefault">Expand details by default</span>
+                                </label>
+                                <label class="setting-chip" for="show-cluster-dashboard">
+                                    <input type="checkbox" id="show-cluster-dashboard">
+                                    <span class="setting-chip-label filter-pill" data-i18n="showClusterDashboardLabel">Show cluster dashboard</span>
+                                </label>
+                                <label class="setting-chip" for="group-by-node">
+                                    <input type="checkbox" id="group-by-node">
+                                    <span class="setting-chip-label filter-pill" data-i18n="groupByNodeLabel">Group resources by node</span>
+                                </label>
+                                <label class="setting-chip" for="skip-power-confirmations">
+                                    <input type="checkbox" id="skip-power-confirmations">
+                                    <span class="setting-chip-label filter-pill" data-i18n="skipPowerConfirmationsLabel">Skip power confirmations</span>
+                                </label>
+                                <label class="setting-chip setting-chip-select" for="auto-refresh-select">
+                                    <span class="setting-chip-select-label" data-i18n="autoRefreshLabel">Auto-refresh</span>
+                                    <select id="auto-refresh-select" class="setting-chip-select-control">
+                                        <option value="0" data-i18n="autoRefreshOff">Off (manual)</option>
+                                        <option value="15" data-i18n="autoRefresh15s">Every 15 seconds</option>
+                                        <option value="30" data-i18n="autoRefresh30s">Every 30 seconds</option>
+                                        <option value="60" data-i18n="autoRefresh60s">Every 60 seconds</option>
+                                        <option value="120" data-i18n="autoRefresh120s">Every 2 minutes</option>
+                                        <option value="300" data-i18n="autoRefresh300s">Every 5 minutes</option>
+                                    </select>
                                 </label>
                         </div>
                     </div>
@@ -477,6 +516,15 @@
             <p data-i18n="connecting">Connecting...</p>
         </div>
 
+        <div id="cluster-dashboard" class="cluster-dashboard hidden" aria-label="Cluster dashboard"></div>
+        <div id="cluster-tasks-panel" class="cluster-tasks-panel hidden" aria-label="Recent cluster tasks">
+            <div class="cluster-tasks-head">
+                <span class="cluster-tasks-title" data-i18n="tasksRecentTitle">Recent cluster tasks</span>
+                <button id="cluster-tasks-refresh" class="cluster-tasks-refresh" type="button" data-i18n="tasksRefreshBtn">Refresh tasks</button>
+            </div>
+            <div id="cluster-tasks-list" class="cluster-tasks-list"></div>
+        </div>
+
         <div id="resource-list" class="list">
             <!-- Resources will be injected here -->
         </div>
@@ -590,7 +638,31 @@
                         <button class="power-btn b-reboot hidden" data-action="reboot" title="Reboot">
                             <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12,5V1L7,6L12,11V7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12H5A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z"/></svg>
                         </button>
+                        <button class="power-btn b-pause hidden" data-action="pause" title="Pause">
+                            <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M14,19H18V5H14M6,19H10V5H6V19Z"/></svg>
+                        </button>
+                        <button class="power-btn b-resume hidden" data-action="resume" title="Resume">
+                            <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/></svg>
+                        </button>
                         <div class="power-status hidden">Sending...</div>
+                    </div>
+
+                    <!-- Snapshots -->
+                    <div class="snapshots-section hidden">
+                        <div class="snapshots-head">
+                            <span class="snapshots-title" data-i18n="snapshotsTitle">Snapshots</span>
+                            <button class="snapshots-create-btn" type="button" data-i18n="snapshotsCreateBtn">Create snapshot</button>
+                        </div>
+                        <div class="snapshots-create-form hidden">
+                            <input type="text" class="snapshots-name-input" maxlength="40" data-i18n-placeholder="snapshotsCreatePromptName" placeholder="Snapshot name">
+                            <input type="text" class="snapshots-description-input" maxlength="120" data-i18n-placeholder="snapshotsCreatePromptDescription" placeholder="Description (optional)">
+                            <div class="snapshots-create-form-actions">
+                                <button type="button" class="snapshots-confirm-btn" data-i18n="snapshotsConfirm">Create</button>
+                                <button type="button" class="snapshots-cancel-btn" data-i18n="snapshotsCancel">Cancel</button>
+                            </div>
+                        </div>
+                        <div class="snapshots-list"></div>
+                        <div class="snapshots-feedback" aria-live="polite"></div>
                     </div>
                 </div>
             </div>

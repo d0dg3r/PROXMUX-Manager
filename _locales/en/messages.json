@@ -149,6 +149,60 @@
             }
         }
     },
+    "sessionBannerTitle": {
+        "message": "Not signed in to Proxmox"
+    },
+    "sessionBannerText": {
+        "message": "The resource list works through your API token. Consoles (noVNC, Shell, SPICE) need a browser sign-in."
+    },
+    "sessionBannerTextMulti": {
+        "message": "Some clusters have no active browser session. Consoles for those clusters need a sign-in."
+    },
+    "sessionBannerLogin": {
+        "message": "Sign in"
+    },
+    "sessionBannerHost": {
+        "message": "Affected host: $HOST$",
+        "placeholders": {
+            "host": {
+                "content": "$1",
+                "example": "pve01.example.com"
+            }
+        }
+    },
+    "sessionBannerHosts": {
+        "message": "Affected hosts: $HOSTS$",
+        "placeholders": {
+            "hosts": {
+                "content": "$1",
+                "example": "pve01.example.com, pve02.example.com"
+            }
+        }
+    },
+    "dismiss": {
+        "message": "Dismiss"
+    },
+    "emptyListNoMatchesTitle": {
+        "message": "No resources match your search"
+    },
+    "emptyListNoMatchesText": {
+        "message": "Try clearing the search or enabling more filters."
+    },
+    "emptyListClearFilters": {
+        "message": "Clear filters"
+    },
+    "emptyListClusterEmptyTitle": {
+        "message": "Cluster is reachable but has no resources"
+    },
+    "emptyListClusterEmptyText": {
+        "message": "The Proxmox API answered with an empty list. If this is unexpected, your API token may be missing audit permissions for VMs/containers."
+    },
+    "emptyListNotConnectedTitle": {
+        "message": "No resources to display"
+    },
+    "emptyListNotConnectedText": {
+        "message": "If you expect resources here, check your API token, that the Proxmox host is reachable, and that you have signed in to the cluster at least once in this browser."
+    },
     "clusterPartialLoadWarning": {
         "message": "Some clusters could not be refreshed:"
     },
@@ -490,5 +544,227 @@
     },
     "sshExportCopyBtn": {
         "message": "Copy SSH Config"
+    },
+    "expandDetailsDefault": {
+        "message": "Expand details by default"
+    },
+    "machineDetailsLabel": {
+        "message": "Machine details"
+    },
+    "helpQuickSetupTitle": {
+        "message": "Quick Setup"
+    },
+    "helpQuickSetupDescription": {
+        "message": "No cluster is configured yet. Use this quick flow to get started in under two minutes."
+    },
+    "helpQuickSetupPointToken": {
+        "message": "Generate or copy your Proxmox API token."
+    },
+    "helpQuickSetupPointClusterSettings": {
+        "message": "Go to Cluster settings and add URL, user, token ID, and secret."
+    },
+    "helpQuickSetupPointImportBackup": {
+        "message": "Or import an existing encrypted backup file."
+    },
+    "helpQuickSetupOpenClusterSettings": {
+        "message": "Open Cluster Settings"
+    },
+    "helpQuickSetupOpenBackupImport": {
+        "message": "Open Backup & Import"
+    },
+    "powerConfirmStop": {
+        "message": "Click again to stop"
+    },
+    "powerConfirmShutdown": {
+        "message": "Click again to shutdown"
+    },
+    "powerConfirmReboot": {
+        "message": "Click again to reboot"
+    },
+    "powerConfirmPause": {
+        "message": "Click again to pause"
+    },
+    "powerConfirmResume": {
+        "message": "Click again to resume"
+    },
+    "powerActionStart": {
+        "message": "Start"
+    },
+    "powerActionShutdown": {
+        "message": "Shutdown"
+    },
+    "powerActionStop": {
+        "message": "Stop"
+    },
+    "powerActionReboot": {
+        "message": "Reboot"
+    },
+    "powerActionPause": {
+        "message": "Pause"
+    },
+    "powerActionResume": {
+        "message": "Resume"
+    },
+    "autoRefreshLabel": {
+        "message": "Auto-refresh"
+    },
+    "autoRefreshHelp": {
+        "message": "Refresh the active view automatically. Pauses while settings are open."
+    },
+    "autoRefreshOff": {
+        "message": "Off (manual)"
+    },
+    "autoRefresh15s": {
+        "message": "Every 15 seconds"
+    },
+    "autoRefresh30s": {
+        "message": "Every 30 seconds"
+    },
+    "autoRefresh60s": {
+        "message": "Every 60 seconds"
+    },
+    "autoRefresh120s": {
+        "message": "Every 2 minutes"
+    },
+    "autoRefresh300s": {
+        "message": "Every 5 minutes"
+    },
+    "skipPowerConfirmationsLabel": {
+        "message": "Skip power confirmations"
+    },
+    "skipPowerConfirmationsHelp": {
+        "message": "When enabled, stop/shutdown/reboot/pause execute on first click without a confirmation."
+    },
+    "groupByNodeLabel": {
+        "message": "Group resources by node"
+    },
+    "groupByNodeHelp": {
+        "message": "Display VMs and LXCs grouped under their host node in the list."
+    },
+    "showClusterDashboardLabel": {
+        "message": "Show cluster dashboard"
+    },
+    "showClusterDashboardHelp": {
+        "message": "Display aggregated CPU, RAM and storage at the top of the list."
+    },
+    "snapshotsTitle": {
+        "message": "Snapshots"
+    },
+    "snapshotsLoading": {
+        "message": "Loading snapshots..."
+    },
+    "snapshotsLoadFailed": {
+        "message": "Could not load snapshots."
+    },
+    "snapshotsEmpty": {
+        "message": "No snapshots yet."
+    },
+    "snapshotsCurrentLabel": {
+        "message": "current state"
+    },
+    "snapshotsCreateBtn": {
+        "message": "Create snapshot"
+    },
+    "snapshotsRollbackBtn": {
+        "message": "Rollback"
+    },
+    "snapshotsDeleteBtn": {
+        "message": "Delete"
+    },
+    "snapshotsCreatedSuccess": {
+        "message": "Snapshot created."
+    },
+    "snapshotsDeletedSuccess": {
+        "message": "Snapshot deleted."
+    },
+    "snapshotsRollbackSuccess": {
+        "message": "Rollback queued. Wait until the task completes."
+    },
+    "snapshotsCreatePromptName": {
+        "message": "Snapshot name"
+    },
+    "snapshotsCreatePromptDescription": {
+        "message": "Description (optional)"
+    },
+    "snapshotsCreatePromptInvalid": {
+        "message": "Snapshot name must start with a letter and may contain only letters, digits, _, -."
+    },
+    "snapshotsConfirmDelete": {
+        "message": "Click again to delete"
+    },
+    "snapshotsConfirmRollback": {
+        "message": "Click again to rollback"
+    },
+    "snapshotsActionFailed": {
+        "message": "Snapshot action failed:"
+    },
+    "snapshotsCancel": {
+        "message": "Cancel"
+    },
+    "snapshotsConfirm": {
+        "message": "Create"
+    },
+    "snapshotsTaskRunningSuffix": {
+        "message": "(task running)"
+    },
+    "tasksRecentTitle": {
+        "message": "Recent cluster tasks"
+    },
+    "tasksRefreshBtn": {
+        "message": "Refresh tasks"
+    },
+    "tasksLoading": {
+        "message": "Loading tasks..."
+    },
+    "tasksLoadFailed": {
+        "message": "Could not load cluster tasks."
+    },
+    "tasksEmpty": {
+        "message": "No recent tasks."
+    },
+    "tasksStatusOk": {
+        "message": "OK"
+    },
+    "tasksStatusRunning": {
+        "message": "Running"
+    },
+    "tasksStatusFailed": {
+        "message": "Failed"
+    },
+    "dashboardCpuLabel": {
+        "message": "CPU usage"
+    },
+    "dashboardMemLabel": {
+        "message": "Memory usage"
+    },
+    "dashboardStorageLabel": {
+        "message": "Storage usage"
+    },
+    "dashboardNodesLabel": {
+        "message": "Nodes online"
+    },
+    "dashboardGuestsLabel": {
+        "message": "Guests running"
+    },
+    "groupNodeHeader": {
+        "message": "Node"
+    },
+    "connectionFailedSelfSignedHint": {
+        "message": "If you use a self-signed certificate, open the Proxmox URL once and accept it, then click Retry."
+    },
+    "connectionOpenProxmoxBtn": {
+        "message": "Open Proxmox URL"
+    },
+    "connectionFailedKindNetwork": {
+        "message": "Network or certificate problem."
+    },
+    "connectionFailedKindAuth": {
+        "message": "Authentication failed: check user/realm, token ID and secret."
+    },
+    "connectionFailedKindTimeout": {
+        "message": "The request timed out before Proxmox responded."
+    },
+    "connectionFailedKindHttpsOnly": {
+        "message": "Proxmox URL must be HTTPS."
     }
 }
