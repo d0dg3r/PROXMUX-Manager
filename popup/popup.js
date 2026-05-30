@@ -183,6 +183,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const translation = chrome.i18n.getMessage(key);
             if (translation) el.placeholder = translation;
         });
+        document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+            const key = el.getAttribute('data-i18n-aria-label');
+            const translation = chrome.i18n.getMessage(key);
+            if (translation) el.setAttribute('aria-label', translation);
+        });
     }
 
     initI18n();
@@ -2908,6 +2913,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             resetLoadingOverlayContent();
             loadingOverlay.classList.remove('hidden');
         }
+        // Reset the per-session details cache so a refresh re-fetches OS/IP/disks
+        // for whichever rows the user expands; filter-only re-renders still hit
+        // the cache because they don't go through fetchAndRender.
+        detailsFetchedKeys.clear();
         try {
             const enabledClusters = getEnabledClusters();
             const previousByCluster = new Map(resourcesByClusterId);
@@ -3379,7 +3388,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!resourceApi) return;
                 if (!(res.status === 'running' || res.status === 'online' || res.type === 'node')) return;
                 detailsLoaded = true;
-                detailsFetchedKeys.add(getResourceKey(res));
+                const cacheKey = getResourceKey(res);
+                if (detailsFetchedKeys.has(cacheKey)) {
+                    // Already fetched in this popup session for this resource. Skip the
+                    // network round-trip; updateUsageStats() above already refreshed
+                    // metrics from cluster/resources, and OS/IP/disks rarely change
+                    // between renders.
+                    return;
+                }
+                detailsFetchedKeys.add(cacheKey);
                 scheduleDetailFetch(() => resourceApi.getResourceDetails(res))
                     .then(renderResourceDetails)
                     .catch(err => console.error('Details error:', err));
@@ -4406,11 +4423,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const header = document.createElement('div');
         header.className = 'group-header';
         const labelText = chrome.i18n.getMessage('groupNodeHeader') || 'Node';
-        const clusterPart = info.clusterName ? ` · ${escapeHtml(info.clusterName)}` : '';
+        const countText = `${info.count} guest${info.count === 1 ? '' : 's'}`;
+        const clusterPart = info.clusterName ? ` · ${info.clusterName}` : '';
         header.innerHTML = `
             <span>${escapeHtml(labelText)}</span>
             <span class="group-header-name">${escapeHtml(info.nodeName)}</span>
-            <span class="group-header-count">${escapeHtml(`${info.count} guest${info.count === 1 ? '' : 's'}${clusterPart}`)}</span>
+            <span class="group-header-count">${escapeHtml(countText + clusterPart)}</span>
         `;
         return header;
     }
