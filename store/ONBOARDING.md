@@ -47,7 +47,7 @@ Perfect for DevOps engineers and home-server enthusiasts who need a fast, profes
 ```
 
 Use the English section above as the canonical source text. If localized storefront text is needed (for example German), derive it from the English block during store submission prep.
-For convenience during store submission, the current German storefront draft is maintained in `store/CWS_DESCRIPTION_DE.txt`.
+For convenience during store submission, the current German storefront draft is maintained in `store/CWS_DESCRIPTION_DE.txt` and a full German mirror of this guide lives in [`store/ONBOARDING_DE.md`](ONBOARDING_DE.md).
 
 ---
 
