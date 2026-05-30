@@ -29,13 +29,25 @@ The heart of the extension. It encapsulates all communication with the Proxmox V
 - **Authentication**: Uses `PVEAPIToken` for all resource-related requests.
 - **Session Management**: Specifically checks for the `PVEAuthCookie` using the `chrome.cookies` API to ensure interactive consoles (noVNC, Shell) can be opened without 401 errors.
 - **Failover Logic**: Implements a retry mechanism that automatically switches to discovered cluster nodes if the primary node is unreachable.
+- **Snapshot Management**: Exposes `getSnapshots`, `createSnapshot`, `deleteSnapshot`, and `rollbackSnapshot` for QEMU and LXC guests, used by the per-resource snapshot drawer.
+- **Cluster Tasks**: `getClusterTasks({ limit, source, errors })` powers the recent-tasks panel below the dashboard.
+- **Pause / Resume / Suspend**: `vmAction` accepts `pause`, `resume`, and `suspend` for QEMU guests.
+- **Connection Diagnostics**: `categorizeConnectionError` classifies request failures into `selfsigned`, `tls`, `network`, `timeout`, and `unknown`, allowing the UI to render targeted hints (for example, an `Open Proxmox URL` action for self-signed certificates).
 
 ### 3.2 UI Layer (`popup/`)
 The extension uses a shared UI for Side Panel and Floating Window contexts.
-- **`popup.html`**: Defines the searchable resource list and filter system.
+- **`popup.html`**: Defines the searchable resource list, cluster dashboard, recent tasks panel, and filter system.
 - **`popup.js`**: Handles state management, filtering, inline settings view toggling, and event delegation. It interacts with `ProxmoxAPI` to fetch data and launch consoles.
 - **Adaptive Density Controls**: Global `uiScale` is applied as a CSS variable and synchronized live across popup/sidepanel/options via storage events.
-- **Multi-Cluster Tabs**: Supports per-cluster context tabs plus an `All Clusters` aggregation mode, including scoped UI state persistence. Aggregated refresh uses independent per-cluster fetches; failures are surfaced per tab and in a banner without discarding successful clusters. Cached per-cluster resource maps are only fully rebuilt in aggregated views so single-tab refreshes preserve other clusters’ last-known lists.
+- **Multi-Cluster Tabs**: Supports per-cluster context tabs plus an `All Clusters` aggregation mode, including scoped UI state persistence. Aggregated refresh uses independent per-cluster fetches; failures are surfaced per tab and in a banner without discarding successful clusters. Cached per-cluster resource maps are only fully rebuilt in aggregated views so single-tab refreshes preserve other clusters' last-known lists.
+- **Cluster Dashboard**: Optional aggregated CPU/memory/storage tiles plus node and guest health, gated by `showClusterDashboard`.
+- **Session Banner**: Proactively warns when the active cluster has no `PVEAuthCookie` — the resource list still works through the API token, but consoles will need a sign-in. Per-cluster dismiss is in-memory.
+- **Empty-State Hints**: The resource list renders explanatory hints when empty (no matches, cluster empty, or not connected) rather than appearing silently broken.
+- **Group by Node**: Optional grouping of resources with sticky group headers, gated by `groupByNode`.
+- **Auto-Refresh**: Configurable interval per active tab via `autoRefreshIntervalSeconds`; pauses while inline settings are open and resumes after manual refresh.
+- **Power Confirmations**: Two-step in-extension confirmation for destructive actions (`stop`, `shutdown`, `reboot`, `pause`, `resume`, `suspend`) on guests and nodes; suppressible via `skipPowerConfirmations`.
+- **Snapshot Drawer**: Lazy-loaded list, create/delete/rollback flow inside the resource detail card with localized confirmations and inline feedback.
+- **Lazy + Throttled Detail Fetch**: Per-resource OS/IP/disks fetches run only when a card is expanded (or `expandDetailsByDefault` is enabled) and are capped at four concurrent requests, keeping initial render fast on large clusters.
 - **No-Config Guided Entry**: Provides direct CTA routing to either `Cluster` configuration or `Backup & Restore` import-first onboarding.
 - **Status + Metrics Readability**: Resource status indicators/filters and stat-row value alignment are tuned for consistent visual scanning in dense lists.
 - **i18n**: Fully localized using `chrome.i18n` for English and German.
@@ -50,6 +62,7 @@ Uses `chrome.storage.local` to store:
 - API Credentials legacy fallback keys (kept synchronized for compatibility).
 - Failover node URLs per cluster (`clusters[id].failoverUrls`, discovered from live node lists).
 - User preferences (theme, display settings, toolbar click mode).
+- Cluster overview preferences (`showClusterDashboard`, `groupByNode`, `autoRefreshIntervalSeconds`, `skipPowerConfirmations`).
 - Global UI scale (`uiScale`) for unified sizing across all extension surfaces.
 - SSH export preferences (global defaults, key catalog, per-host overrides, shared host defaults, selected export format).
 - Community Scripts catalog/details cache and cache TTL settings.

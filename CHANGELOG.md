@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-05-30
+
+### Added
+- **Session Banner**: When the active cluster has no `PVEAuthCookie`, a non-blocking banner is shown above the resource list explaining that the list works through the API token but consoles need a browser sign-in. Includes a `Sign in` button that opens the cluster URL and a per-cluster dismiss action.
+- **Empty-State Hints**: The resource list now renders an explanatory message instead of being silently empty: distinct hints for "no matches for current search/filter" (with a `Clear filters` button), "cluster reachable but empty" (token may lack audit permissions), and "no resources to display" (check token, host reachability, sign-in).
+- **Cluster Dashboard**: Optional aggregated CPU, memory, and storage tiles plus node and guest health summary at the top of the resource list, with severity coloring and an "Open dashboard" toggle in inline display settings.
+- **Group by Node**: Optional grouping of resources by node with sticky group headers showing per-node guest counts.
+- **Snapshot Management**: Per-resource snapshot drawer in the detail card supports listing, creating, deleting, and rolling back snapshots, with two-step confirmations and EN/DE strings.
+- **Auto-Refresh**: Configurable interval (`Off / 15s / 30s / 60s / 2m / 5m`) for the active cluster tab; pauses while inline settings are open and resumes after manual refresh.
+- **Power Confirmations**: Two-step in-extension confirmation for destructive VM, container, and node power actions (`stop`, `shutdown`, `reboot`, `pause`, `resume`, `suspend`) plus an opt-out toggle in display settings.
+- **Pause / Resume**: First-class pause/resume buttons for QEMU guests with full localization and confirmation handling.
+- **Recent Cluster Tasks Panel**: Optional task list rendered alongside the dashboard, fed from `/cluster/tasks` with status pills (running, ok, failed) and refresh button.
+- **Connection Error UX**: Self-signed-certificate / TLS / network failures now surface a tailored hint plus an `Open Proxmox URL` action, so users can accept the certificate in one click.
+- **Lazy Resource Details**: Per-resource OS/IP/disks fetches are now lazy and concurrency-limited (max 4 in flight) — large clusters render their list immediately and only fetch details when a card is expanded or `Expand details by default` is enabled.
+- **i18n**: New EN/DE keys for dashboard, group-by-node, snapshots, auto-refresh, power confirmations, tasks panel, and connection error hint.
+
+### Changed
+- **Settings Backup / Reset**: Backup and factory-reset now include `autoRefreshIntervalSeconds`, `skipPowerConfirmations`, `groupByNode`, and `showClusterDashboard`.
+
+### Tests
+- New unit tests for snapshot endpoints, cluster tasks, pause/resume actions, connection-error categorization, and the auto-refresh helper. Source-level e2e check verifies the snapshots, dashboard, auto-refresh, and power-confirmation artifacts ship in the bundle.
+
 ## [1.2.2] - 2026-04-13
 
 ### Added

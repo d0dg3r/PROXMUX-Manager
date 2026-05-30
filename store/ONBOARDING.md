@@ -2,7 +2,7 @@
 
 This document contains all the text, metadata, and justifications required to submit PROXMUX Manager to the Chrome Web Store.
 
-Current release prep target: `v1.2.2` (align with `CHANGELOG.md` top entry before submission).
+Current release prep target: `v1.3.0` (align with `CHANGELOG.md` top entry before submission).
 
 ## 1. Store Metadata
 
@@ -24,6 +24,12 @@ Current release prep target: `v1.2.2` (align with `CHANGELOG.md` top entry befor
 PROXMUX Manager is the professional Chrome extension for Proxmox VE administrators. Access your virtualization cluster instantly to monitor nodes, VMs, and containers without leaving your current tab.
 
 Key Features:
+- Cluster Dashboard: Aggregated CPU, memory, and storage tiles plus node and guest health at the top of the resource list.
+- Group by Node: Optional grouping with sticky node headers and per-node guest counts for large clusters.
+- Snapshot Management: List, create, delete, and roll back QEMU/LXC snapshots with two-step destructive confirmations.
+- Auto-Refresh: Pick an interval (Off, 15s, 30s, 60s, 2m, 5m) per active cluster tab; pauses while inline settings are open.
+- Power Management: Start, Stop, Shutdown, Reboot, Pause, Resume with two-step confirmations and an optional global skip toggle.
+- Recent Cluster Tasks: Compact panel below the dashboard fed from the cluster task archive with running/ok/failed states.
 - Interactive Tags: Discover and click cluster-wide tags for instant categorical filtering.
 - Uptime Display: Real-time, human-readable uptime (e.g., 2d 5h) for all running resources.
 - Improved Monitoring: See VM/LXC status, OS types, and IP addresses at a glance.
@@ -32,6 +38,7 @@ Key Features:
 - UI Scale Presets: Adjust readability with compact/standard/large presets and fine tuning slider.
 - Intelligent Consoles: Support for noVNC, SPICE (remote-viewer), and Node Shells.
 - SSH Export Formats: Export Linux hosts as OpenSSH config, PuTTY `.reg`, or CSV.
+- TLS-Aware Connection Errors: Self-signed certificate failures show a tailored hint and a one-click `Open Proxmox URL` action.
 - Modern Design: Selection of Dark, Light, or Follow System themes.
 - High Availability: Automatic cluster node discovery and seamless failover support.
 - Secure: API Tokens are stored locally and never leave your browser.

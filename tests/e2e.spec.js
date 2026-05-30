@@ -1215,4 +1215,108 @@ test.describe('PROXMUX Popup (Mock Environment)', () => {
     await page.goto(`${staticBaseUrl}/popup/popup.html`);
     await expect(page.locator('[data-id="vm-production-201"]')).toHaveClass(/expanded/);
   });
+
+  test('should ship snapshots, auto-refresh, dashboard and power confirmation source artifacts', async () => {
+    const popupSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.js'), 'utf8');
+    const popupHtmlSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.html'), 'utf8');
+    const popupCssSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.css'), 'utf8');
+    const apiSource = fs.readFileSync(path.resolve(__dirname, '../lib/proxmox-api.js'), 'utf8');
+    const localesEn = fs.readFileSync(path.resolve(__dirname, '../_locales/en/messages.json'), 'utf8');
+    const localesDe = fs.readFileSync(path.resolve(__dirname, '../_locales/de/messages.json'), 'utf8');
+    const settingsResetSource = fs.readFileSync(path.resolve(__dirname, '../lib/settings-reset.js'), 'utf8');
+    const settingsBackupSource = fs.readFileSync(path.resolve(__dirname, '../lib/settings-backup.js'), 'utf8');
+
+    // Snapshots API surface
+    expect(apiSource).toContain('getSnapshots');
+    expect(apiSource).toContain('createSnapshot');
+    expect(apiSource).toContain('deleteSnapshot');
+    expect(apiSource).toContain('rollbackSnapshot');
+    expect(apiSource).toContain('getClusterTasks');
+
+    // Snapshots template + CSS + i18n
+    expect(popupHtmlSource).toContain('class="snapshots-section hidden"');
+    expect(popupHtmlSource).toContain('snapshots-create-btn');
+    expect(popupCssSource).toContain('.snapshots-section');
+    expect(localesEn).toContain('"snapshotsTitle"');
+    expect(localesDe).toContain('"snapshotsTitle"');
+    expect(localesEn).toContain('"snapshotsCreateBtn"');
+    expect(localesDe).toContain('"snapshotsCreateBtn"');
+
+    // Power confirmations + pause/resume + i18n
+    expect(popupHtmlSource).toContain('b-pause');
+    expect(popupHtmlSource).toContain('b-resume');
+    expect(popupSource).toContain('requirePowerConfirmation');
+    expect(popupSource).toContain('POWER_DESTRUCTIVE_ACTIONS');
+    expect(popupSource).toContain('skipPowerConfirmations');
+    expect(localesEn).toContain('"powerConfirmStop"');
+    expect(localesDe).toContain('"powerConfirmStop"');
+
+    // Auto-refresh control + helper
+    expect(popupHtmlSource).toContain('id="auto-refresh-select"');
+    expect(popupSource).toContain('scheduleAutoRefresh');
+    expect(popupSource).toContain('clearAutoRefreshTimer');
+    expect(popupSource).toContain("from '../lib/auto-refresh.js'");
+    expect(localesEn).toContain('"autoRefreshLabel"');
+    expect(localesDe).toContain('"autoRefreshLabel"');
+
+    // Cluster dashboard + group-by-node
+    expect(popupHtmlSource).toContain('id="cluster-dashboard"');
+    expect(popupSource).toContain('renderClusterDashboard');
+    expect(popupSource).toContain('applyGroupByNode');
+    expect(popupCssSource).toContain('.cluster-dashboard');
+    expect(popupCssSource).toContain('.group-header');
+
+    // SSL/connection error UX has tailored hint and Open Proxmox button
+    expect(popupSource).toContain('categorizeConnectionError');
+    expect(popupSource).toContain('connectionFailedSelfSignedHint');
+    expect(popupSource).toContain('id="open-proxmox-btn"');
+    expect(localesEn).toContain('"connectionOpenProxmoxBtn"');
+    expect(localesDe).toContain('"connectionOpenProxmoxBtn"');
+
+    // Lazy detail fetch + concurrency limit
+    expect(popupSource).toContain('DETAIL_FETCH_CONCURRENCY');
+    expect(popupSource).toContain('scheduleDetailFetch');
+
+    // Settings persistence for the new flags
+    expect(settingsResetSource).toContain('autoRefreshIntervalSeconds');
+    expect(settingsResetSource).toContain('skipPowerConfirmations');
+    expect(settingsResetSource).toContain('groupByNode');
+    expect(settingsResetSource).toContain('showClusterDashboard');
+    expect(settingsBackupSource).toContain("'autoRefreshIntervalSeconds'");
+    expect(settingsBackupSource).toContain("'skipPowerConfirmations'");
+    expect(settingsBackupSource).toContain("'groupByNode'");
+    expect(settingsBackupSource).toContain("'showClusterDashboard'");
+  });
+
+  test('should ship session banner and empty-state hints', async () => {
+    const popupSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.js'), 'utf8');
+    const popupHtmlSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.html'), 'utf8');
+    const popupCssSource = fs.readFileSync(path.resolve(__dirname, '../popup/popup.css'), 'utf8');
+    const localesEn = fs.readFileSync(path.resolve(__dirname, '../_locales/en/messages.json'), 'utf8');
+    const localesDe = fs.readFileSync(path.resolve(__dirname, '../_locales/de/messages.json'), 'utf8');
+
+    expect(popupHtmlSource).toContain('id="session-banner"');
+    expect(popupHtmlSource).toContain('id="session-banner-login"');
+    expect(popupHtmlSource).toContain('id="session-banner-dismiss"');
+
+    expect(popupCssSource).toContain('.session-banner');
+    expect(popupCssSource).toContain('.empty-list-hint');
+
+    expect(popupSource).toContain('evaluateSessionBanner');
+    expect(popupSource).toContain('hideSessionBanner');
+    expect(popupSource).toContain('renderEmptyState');
+    expect(popupSource).toContain('hasAnyActiveFilter');
+    expect(popupSource).toContain('clearAllFilters');
+    expect(popupSource).toContain('dismissedSessionBannerUrls');
+
+    expect(localesEn).toContain('"sessionBannerTitle"');
+    expect(localesEn).toContain('"sessionBannerText"');
+    expect(localesEn).toContain('"sessionBannerLogin"');
+    expect(localesEn).toContain('"emptyListNoMatchesTitle"');
+    expect(localesEn).toContain('"emptyListClusterEmptyTitle"');
+    expect(localesEn).toContain('"emptyListNotConnectedTitle"');
+    expect(localesDe).toContain('"sessionBannerTitle"');
+    expect(localesDe).toContain('"sessionBannerLogin"');
+    expect(localesDe).toContain('"emptyListClusterEmptyTitle"');
+  });
 });

@@ -1,4 +1,4 @@
-import { ProxmoxAPI } from '../lib/proxmox-api.js';
+import { ProxmoxAPI, categorizeConnectionError } from '../lib/proxmox-api.js';
 import { getCommunityScriptsCatalog, getCommunityScriptDetails, getCommunityScriptGuide } from '../lib/community-scripts.js';
 import { buildInstallCommandForScripts } from '../lib/install-command.js';
 import {
@@ -43,6 +43,12 @@ import {
     toUiScaleFactor,
     UI_SCALE_DEFAULT
 } from '../lib/ui-scale.js';
+import {
+    AUTO_REFRESH_DEFAULT,
+    AUTO_REFRESH_ALLOWED,
+    isAutoRefreshEnabled,
+    normalizeAutoRefreshSeconds
+} from '../lib/auto-refresh.js';
 
 const LAST_BROWSER_WINDOW_ID_KEY = 'lastBrowserWindowId';
 const FAVORITES_TAB_ID = '__favorites__';
@@ -92,6 +98,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const searchContainer = document.querySelector('.search-container');
     const clusterTabs = document.getElementById('cluster-tabs');
     const clusterFetchBanner = document.getElementById('cluster-fetch-banner');
+    const sessionBanner = document.getElementById('session-banner');
+    const sessionBannerHostEl = document.getElementById('session-banner-host');
+    const sessionBannerLoginBtn = document.getElementById('session-banner-login');
+    const sessionBannerDismissBtn = document.getElementById('session-banner-dismiss');
+    const sessionBannerTextEl = sessionBanner?.querySelector('.session-banner-text') || null;
     const inlineProxmoxUrlInput = document.getElementById('inline-proxmox-url');
     const inlineClusterSelect = document.getElementById('inline-cluster-select');
     const inlineClusterNameInput = document.getElementById('inline-cluster-name');
@@ -234,7 +245,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     const resourcesByClusterId = new Map();
     const clusterLoadErrors = new Map();
     let pendingSessionLoginUrl = '';
+    const dismissedSessionBannerUrls = new Set();
+    let lastSessionBannerLoginUrl = '';
+    let sessionBannerCheckToken = 0;
     const pendingStatusOverrides = new Map();
+    const detailsFetchedKeys = new Set();
+    const DETAIL_FETCH_CONCURRENCY = 4;
+    let detailFetchInFlight = 0;
+    const detailFetchQueue = [];
+
+    function runNextDetailFetch() {
+        if (detailFetchInFlight >= DETAIL_FETCH_CONCURRENCY) return;
+        const next = detailFetchQueue.shift();
+        if (!next) return;
+        detailFetchInFlight += 1;
+        next().finally(() => {
+            detailFetchInFlight -= 1;
+            runNextDetailFetch();
+        });
+    }
+
+    function scheduleDetailFetch(taskFactory) {
+        return new Promise((resolve, reject) => {
+            const wrappedTask = async () => {
+                try {
+                    const value = await taskFactory();
+                    resolve(value);
+                } catch (error) {
+                    reject(error);
+                }
+            };
+            detailFetchQueue.push(wrappedTask);
+            runNextDetailFetch();
+        });
+    }
     const tagFiltersContainer = document.getElementById('tag-filters');
     const tagFiltersSection = tagFiltersContainer?.closest('.filter-section-tags');
     const DEFAULT_TYPE_FILTERS = ['node', 'qemu', 'lxc'];
@@ -252,6 +296,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const collapsibleFilters = document.getElementById('collapsible-filters');
     const displaySettingsMenu = document.getElementById('display-settings-menu');
     const expandDetailsDefaultCheckbox = document.getElementById('expand-details-default');
+    const showClusterDashboardCheckbox = document.getElementById('show-cluster-dashboard');
+    const groupByNodeCheckbox = document.getElementById('group-by-node');
+    const skipPowerConfirmationsCheckbox = document.getElementById('skip-power-confirmations');
+    const autoRefreshSelect = document.getElementById('auto-refresh-select');
+    const clusterDashboard = document.getElementById('cluster-dashboard');
+    const clusterTasksPanel = document.getElementById('cluster-tasks-panel');
+    const clusterTasksList = document.getElementById('cluster-tasks-list');
+    const clusterTasksRefreshBtn = document.getElementById('cluster-tasks-refresh');
     const scriptsPanel = document.querySelector('.scripts-panel');
     const scriptsBody = document.getElementById('scripts-body');
     const scriptsToggleBtn = document.getElementById('scripts-toggle-btn');
@@ -350,7 +402,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             ServerAliveInterval: '30',
             ServerAliveCountMax: '3'
         },
-        defaultActionClickMode: 'sidepanel'
+        defaultActionClickMode: 'sidepanel',
+        autoRefreshIntervalSeconds: AUTO_REFRESH_DEFAULT,
+        skipPowerConfirmations: false,
+        groupByNode: false,
+        showClusterDashboard: false
     };
     
     let currentExpandedId = null;
@@ -369,6 +425,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isInlineImportingSettings = false;
     let inlineSshAliasOptions = [];
     let inlineMergedSshKeyCatalog = [];
+    let autoRefreshIntervalSeconds = AUTO_REFRESH_DEFAULT;
+    let autoRefreshTimer = null;
+    let isAutoRefreshInFlight = false;
+    let skipPowerConfirmations = false;
+    let groupByNodeEnabled = false;
+    let showClusterDashboardEnabled = false;
+    const pendingPowerConfirmations = new Map();
+    const POWER_CONFIRM_TIMEOUT_MS = 4000;
     const AUTO_PASTE_TIMEOUT_MS = 1500;
     const NEW_TAB_READY_TIMEOUT_MS = 650;
     const NEW_TAB_SETTLE_DELAY_MS = 250;
@@ -790,6 +854,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateClusterTabsVisibility();
         if (!isSettingsView) {
             setInlineSettingsStatus('');
+            scheduleAutoRefresh();
+        } else {
+            clearAutoRefreshTimer();
         }
     }
 
@@ -1756,8 +1823,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             sshHostDefaults: resetResult.storagePayload.sshHostDefaults,
             scriptsPanelCollapsed: resetResult.storagePayload.scriptsPanelCollapsed,
             expandDetailsByDefault: resetResult.storagePayload.expandDetailsByDefault,
-            favoriteResourceIds: resetResult.storagePayload.favoriteResourceIds
+            favoriteResourceIds: resetResult.storagePayload.favoriteResourceIds,
+            autoRefreshIntervalSeconds: resetResult.storagePayload.autoRefreshIntervalSeconds,
+            skipPowerConfirmations: resetResult.storagePayload.skipPowerConfirmations,
+            groupByNode: resetResult.storagePayload.groupByNode,
+            showClusterDashboard: resetResult.storagePayload.showClusterDashboard
         };
+        autoRefreshIntervalSeconds = resetResult.storagePayload.autoRefreshIntervalSeconds;
+        skipPowerConfirmations = resetResult.storagePayload.skipPowerConfirmations;
+        groupByNodeEnabled = resetResult.storagePayload.groupByNode;
+        showClusterDashboardEnabled = resetResult.storagePayload.showClusterDashboard;
+        clearAutoRefreshTimer();
+        clearAllPendingPowerConfirmations();
         displaySettings = { ...FACTORY_DEFAULT_DISPLAY_SETTINGS };
         expandDetailsByDefault = Boolean(resetResult.storagePayload.expandDetailsByDefault);
         favoriteResourceIds = new Set(resetResult.storagePayload.favoriteResourceIds || []);
@@ -1817,6 +1894,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (expandDetailsDefaultCheckbox) {
             expandDetailsDefaultCheckbox.checked = expandDetailsByDefault;
         }
+        if (showClusterDashboardCheckbox) {
+            showClusterDashboardCheckbox.checked = showClusterDashboardEnabled;
+        }
+        if (groupByNodeCheckbox) {
+            groupByNodeCheckbox.checked = groupByNodeEnabled;
+        }
+        if (skipPowerConfirmationsCheckbox) {
+            skipPowerConfirmationsCheckbox.checked = skipPowerConfirmations;
+        }
+        if (autoRefreshSelect) {
+            const allowedValues = new Set(AUTO_REFRESH_ALLOWED.map(String));
+            const value = String(autoRefreshIntervalSeconds);
+            autoRefreshSelect.value = allowedValues.has(value) ? value : '0';
+        }
     }
 
     // Handle Display Settings Changes
@@ -1835,6 +1926,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         settings.expandDetailsByDefault = expandDetailsByDefault;
         await persistExpandDetailsByDefault();
         filterAndRender();
+    });
+
+    showClusterDashboardCheckbox?.addEventListener('change', async () => {
+        showClusterDashboardEnabled = Boolean(showClusterDashboardCheckbox.checked);
+        settings.showClusterDashboard = showClusterDashboardEnabled;
+        await chrome.storage.local.set({ showClusterDashboard: showClusterDashboardEnabled });
+        renderClusterDashboard();
+    });
+
+    groupByNodeCheckbox?.addEventListener('change', async () => {
+        groupByNodeEnabled = Boolean(groupByNodeCheckbox.checked);
+        settings.groupByNode = groupByNodeEnabled;
+        await chrome.storage.local.set({ groupByNode: groupByNodeEnabled });
+        filterAndRender();
+    });
+
+    skipPowerConfirmationsCheckbox?.addEventListener('change', async () => {
+        skipPowerConfirmations = Boolean(skipPowerConfirmationsCheckbox.checked);
+        settings.skipPowerConfirmations = skipPowerConfirmations;
+        await chrome.storage.local.set({ skipPowerConfirmations });
+        if (skipPowerConfirmations) clearAllPendingPowerConfirmations();
+    });
+
+    autoRefreshSelect?.addEventListener('change', async () => {
+        const next = normalizeAutoRefreshSeconds(autoRefreshSelect.value, AUTO_REFRESH_DEFAULT);
+        autoRefreshIntervalSeconds = next;
+        settings.autoRefreshIntervalSeconds = next;
+        await chrome.storage.local.set({ autoRefreshIntervalSeconds: next });
+        scheduleAutoRefresh();
     });
 
     function applyDisplaySettings() {
@@ -2353,10 +2473,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!isSpecialTab && !enabledClusterIds.has(nextTabId)) {
             nextTabId = activeClusterId || ALL_CLUSTERS_TAB_ID;
         }
+        clearAllPendingPowerConfirmations();
         activeClusterTabId = nextTabId || ALL_CLUSTERS_TAB_ID;
         if (activeClusterTabId !== ALL_CLUSTERS_TAB_ID && activeClusterTabId !== FAVORITES_TAB_ID) {
             activeClusterId = activeClusterTabId;
         }
+        hideSessionBanner();
         setActiveClusterContext(activeClusterId);
         api = activeClusterId ? apiClients.get(activeClusterId) || null : null;
         currentExpandedId = readScopedUiValue('lastActiveResource', '') || null;
@@ -2408,9 +2530,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         'scriptsPanelCollapsed',
         'expandDetailsByDefault',
         'favoriteResourceIds',
-        'activeClusterTabId'
+        'activeClusterTabId',
+        'autoRefreshIntervalSeconds',
+        'skipPowerConfirmations',
+        'groupByNode',
+        'showClusterDashboard'
     ]);
     setGlobalSettingsFromStore(stored);
+    autoRefreshIntervalSeconds = normalizeAutoRefreshSeconds(stored.autoRefreshIntervalSeconds, AUTO_REFRESH_DEFAULT);
+    skipPowerConfirmations = Boolean(stored.skipPowerConfirmations);
+    groupByNodeEnabled = Boolean(stored.groupByNode);
+    showClusterDashboardEnabled = Boolean(stored.showClusterDashboard);
     const clusterState = await getClustersState();
     clusters = clusterState.clusters;
     activeClusterId = clusterState.activeClusterId;
@@ -2663,6 +2793,114 @@ document.addEventListener('DOMContentLoaded', async () => {
         clusterFetchBanner.classList.remove('hidden');
     }
 
+    function getActiveClustersForSessionCheck() {
+        const isMultiClusterView = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
+        if (isMultiClusterView) {
+            return getEnabledClusters().filter((cluster) => cluster.proxmoxUrl && cluster.apiToken);
+        }
+        const single = clusters[activeClusterTabId] || clusters[activeClusterId];
+        if (!single || !single.proxmoxUrl || !single.apiToken) return [];
+        return [single];
+    }
+
+    function hideSessionBanner() {
+        if (!sessionBanner) return;
+        sessionBanner.classList.add('hidden');
+        if (sessionBannerHostEl) {
+            sessionBannerHostEl.textContent = '';
+            sessionBannerHostEl.classList.add('hidden');
+        }
+        lastSessionBannerLoginUrl = '';
+    }
+
+    async function evaluateSessionBanner() {
+        if (!sessionBanner) return;
+        const targets = getActiveClustersForSessionCheck();
+        if (!targets.length) {
+            hideSessionBanner();
+            return;
+        }
+        const token = ++sessionBannerCheckToken;
+
+        const checks = await Promise.all(targets.map(async (cluster) => {
+            const client = apiClients.get(cluster.id);
+            if (!client) return { cluster, ok: true };
+            try {
+                const ok = await client.checkSession();
+                return { cluster, ok: Boolean(ok) };
+            } catch (_error) {
+                return { cluster, ok: false };
+            }
+        }));
+
+        if (token !== sessionBannerCheckToken) return;
+
+        const missing = checks.filter((entry) => !entry.ok);
+        if (missing.length === 0) {
+            hideSessionBanner();
+            return;
+        }
+
+        const primaryCluster = missing[0].cluster;
+        const primaryUrl = (primaryCluster.proxmoxUrl || '').trim().replace(/\/$/, '');
+        if (dismissedSessionBannerUrls.has(primaryUrl)) {
+            hideSessionBanner();
+            return;
+        }
+
+        const isMultiClusterView = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
+        if (sessionBannerTextEl) {
+            const textKey = isMultiClusterView && missing.length > 1 ? 'sessionBannerTextMulti' : 'sessionBannerText';
+            sessionBannerTextEl.textContent = chrome.i18n.getMessage(textKey)
+                || sessionBannerTextEl.textContent;
+        }
+        if (sessionBannerHostEl) {
+            const hosts = missing.map((entry) => {
+                try {
+                    return new URL(entry.cluster.proxmoxUrl).hostname;
+                } catch (_e) {
+                    return entry.cluster.proxmoxUrl || '';
+                }
+            }).filter(Boolean);
+            let line = '';
+            if (hosts.length === 1) {
+                line = chrome.i18n.getMessage('sessionBannerHost', [hosts[0]]) || `Affected host: ${hosts[0]}`;
+            } else if (hosts.length > 1) {
+                line = chrome.i18n.getMessage('sessionBannerHosts', [hosts.join(', ')]) || `Affected hosts: ${hosts.join(', ')}`;
+            }
+            if (line) {
+                sessionBannerHostEl.textContent = line;
+                sessionBannerHostEl.classList.remove('hidden');
+            } else {
+                sessionBannerHostEl.textContent = '';
+                sessionBannerHostEl.classList.add('hidden');
+            }
+        }
+
+        lastSessionBannerLoginUrl = primaryUrl;
+        sessionBanner.classList.remove('hidden');
+    }
+
+    if (sessionBannerLoginBtn) {
+        sessionBannerLoginBtn.addEventListener('click', () => {
+            const url = (lastSessionBannerLoginUrl || '').trim();
+            if (!url) return;
+            try {
+                chrome.tabs.create({ url });
+            } catch (_error) {
+                window.open(url, '_blank');
+            }
+        });
+    }
+    if (sessionBannerDismissBtn) {
+        sessionBannerDismissBtn.addEventListener('click', () => {
+            if (lastSessionBannerLoginUrl) {
+                dismissedSessionBannerUrls.add(lastSessionBannerLoginUrl);
+            }
+            hideSessionBanner();
+        });
+    }
+
     const fetchAndRender = async (showLoading = false) => {
         let suppressLoadingHide = false;
         if (showLoading) {
@@ -2767,6 +3005,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderScriptNodeOptions(allResources);
             await syncFailoverFromResources();
             dismissLoadingErrorOverlayIfPresent();
+            evaluateSessionBanner();
         } catch (error) {
             console.error('Proxmox API Error:', error);
             suppressLoadingHide = true;
@@ -2775,11 +3014,33 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const safeMessage = escapeHtml(error && typeof error.message === 'string' ? error.message : error);
                 const title = escapeHtml(chrome.i18n.getMessage('connectionFailed') || 'Connection Failed');
                 const retryLabel = escapeHtml(chrome.i18n.getMessage('retry') || 'Retry');
+                const kind = categorizeConnectionError(error);
+                const kindHintKey = {
+                    network: 'connectionFailedKindNetwork',
+                    auth: 'connectionFailedKindAuth',
+                    timeout: 'connectionFailedKindTimeout',
+                    'https-only': 'connectionFailedKindHttpsOnly'
+                }[kind] || '';
+                const kindHint = kindHintKey ? escapeHtml(chrome.i18n.getMessage(kindHintKey) || '') : '';
+                const selfSignedHint = (kind === 'network' || kind === 'unknown')
+                    ? escapeHtml(chrome.i18n.getMessage('connectionFailedSelfSignedHint') || '')
+                    : '';
+                const proxmoxUrlForLink = (
+                    clusters[activeClusterTabId]?.proxmoxUrl ||
+                    settings.proxmoxUrl ||
+                    ''
+                ).replace(/\/$/, '');
+                const openLabel = escapeHtml(chrome.i18n.getMessage('connectionOpenProxmoxBtn') || 'Open Proxmox URL');
                 loadingOverlay.innerHTML = `
                     <div style="color:var(--error); padding: 20px;">
                         <p><strong>${title}</strong></p>
+                        ${kindHint ? `<p style="font-size: 0.78rem; margin: 6px 0 0;">${kindHint}</p>` : ''}
                         <p style="font-size: 0.8rem; margin: 10px 0;">${safeMessage}</p>
-                        <button id="retry-btn" class="action-btn" style="margin-top: 15px;">${retryLabel}</button>
+                        ${selfSignedHint ? `<p class="connection-error-hint">${selfSignedHint}</p>` : ''}
+                        <div class="connection-error-actions">
+                            <button id="retry-btn" class="action-btn">${retryLabel}</button>
+                            ${proxmoxUrlForLink ? `<button id="open-proxmox-btn" class="action-btn" data-url="${escapeHtml(proxmoxUrlForLink)}">${openLabel}</button>` : ''}
+                        </div>
                     </div>
                 `;
                 const retryBtn = document.getElementById('retry-btn');
@@ -2789,6 +3050,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                         fetchAndRender(true);
                     });
                 }
+                const openProxmoxBtn = document.getElementById('open-proxmox-btn');
+                if (openProxmoxBtn) {
+                    openProxmoxBtn.addEventListener('click', () => {
+                        const url = openProxmoxBtn.getAttribute('data-url') || '';
+                        if (url) chrome.tabs.create({ url });
+                    });
+                }
             }
         } finally {
             if (showLoading && !suppressLoadingHide) {
@@ -2796,6 +3064,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 resetLoadingOverlayContent();
                 loadingOverlay.classList.add('hidden');
             }
+            scheduleAutoRefresh();
         }
     };
 
@@ -2821,7 +3090,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function renderResources(resources) {
         resourceList.innerHTML = '';
-        
+        clearAllPendingPowerConfirmations();
+        renderClusterDashboard();
+
         // Sort: Nodes first, then Running VMs, then Stopped VMs
         const sorted = resources.filter(r => ['node', 'qemu', 'lxc'].includes(r.type)).sort((a, b) => {
             if (a.type === 'node' && b.type !== 'node') return -1;
@@ -2833,7 +3104,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             return nameA.toString().localeCompare(nameB.toString());
         });
 
-        for (const res of sorted) {
+        let renderOrder = sorted;
+        let groupHeaderInfoByKey = null;
+        if (groupByNodeEnabled) {
+            const grouped = applyGroupByNode(sorted);
+            renderOrder = grouped.ordered;
+            groupHeaderInfoByKey = grouped;
+        }
+
+        for (const res of renderOrder) {
+            if (groupHeaderInfoByKey) {
+                const isNode = res.type === 'node';
+                const nodeKey = isNode
+                    ? `__node__${res.__clusterId || 'cluster'}::${res.node || res.name || ''}`
+                    : `${res.__clusterId || 'cluster'}::${res.node || 'unassigned'}`;
+                const bucket = groupHeaderInfoByKey.groupedByKey.get(nodeKey);
+                if (bucket && bucket.headerInfo && !bucket.headerRendered) {
+                    resourceList.appendChild(renderGroupHeader(bucket.headerInfo));
+                    bucket.headerRendered = true;
+                }
+            }
             const resourceApi = apiClients.get(res.__clusterId) || api;
             const clone = template.content.cloneNode(true);
             const item = clone.querySelector('.resource-item');
@@ -3014,79 +3304,100 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Usage Stats (Initial from cluster/resources)
             updateUsageStats(item, res);
 
-            // Fetch details (IP, OS, Disks) for all types if status allows
-            if (resourceApi && (res.status === 'running' || res.status === 'online' || res.type === 'node')) {
-                resourceApi.getResourceDetails(res).then(details => {
-                    // Update stats with potentially more accurate data from status/current
-                    updateUsageStats(item, res);
+            const renderResourceDetails = (details) => {
+                updateUsageStats(item, res);
 
-                    if (details.os) {
-                        osTag.textContent = details.os;
-                        osTag.classList.remove('hidden');
+                if (details.os) {
+                    osTag.textContent = details.os;
+                    osTag.classList.remove('hidden');
+                }
+                if (details.ip) {
+                    ipTag.textContent = details.ip;
+                    ipTag.classList.remove('hidden');
+
+                    const os = (details.os || '').toLowerCase();
+                    const linuxDistros = ['linux', 'debian', 'ubuntu', 'alpine', 'centos', 'fedora', 'arch', 'suse', 'proxmox'];
+                    const isLinux = linuxDistros.some(d => os.includes(d)) || os.startsWith('l');
+
+                    if (res.type === 'node' || res.type === 'lxc' || isLinux) {
+                        sshBtn.classList.remove('hidden');
+                        sshBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            chrome.tabs.create({ url: `ssh://${details.ip}` });
+                        };
                     }
-                    if (details.ip) {
-                        ipTag.textContent = details.ip;
-                        ipTag.classList.remove('hidden');
+                }
 
-                        // Handle SSH visibility
-                        const os = (details.os || '').toLowerCase();
-                        const linuxDistros = ['linux', 'debian', 'ubuntu', 'alpine', 'centos', 'fedora', 'arch', 'suse', 'proxmox'];
-                        const isLinux = linuxDistros.some(d => os.includes(d)) || os.startsWith('l');
-                        
-                        if (res.type === 'node' || res.type === 'lxc' || isLinux) {
-                            sshBtn.classList.remove('hidden');
-                            sshBtn.onclick = (e) => {
-                                e.stopPropagation();
-                                chrome.tabs.create({ url: `ssh://${details.ip}` });
-                            };
-                        }
-                    }
-
-                    // Render Disks
-                    const disksContainer = item.querySelector('#disks-container');
-                    if (disksContainer) {
-                        disksContainer.innerHTML = '';
-                        if (details.disks && details.disks.length > 0) {
-                            details.disks.forEach(disk => {
-                                const diskRow = document.createElement('div');
-                                diskRow.className = 'stat-row';
-                                const isVM = res.type === 'qemu';
-                                const perc = isVM ? 100 : ((disk.used !== null) ? (disk.used / disk.max * 100).toFixed(1) : 0);
-                                const usedText = (disk.used !== null && !isVM) ? `${formatBytes(disk.used)} / ` : '';
-                                
-                                diskRow.innerHTML = `
-                                    <span class="stat-label">
-                                        <svg class="stat-icon" viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2M12,4A1,1 0 0,0 11,5A1,1 0 0,0 12,6A1,1 0 0,0 13,5A1,1 0 0,0 12,4M18,20V4H6V20H18M12,18A3,3 0 0,1 9,15A3,3 0 0,1 12,12A3,3 0 0,1 15,15A3,3 0 0,1 12,18M12,14A1,1 0 0,0 11,15A1,1 0 0,0 12,16A1,1 0 0,0 13,15A1,1 0 0,0 12,14Z"/></svg>
-                                        ${disk.name}
-                                    </span>
-                                    <div class="progress-container">
-                                        <div class="progress-bar disk-bar ${isVM ? 'allocated' : ''}" style="width: ${perc}%"></div>
-                                    </div>
-                                    <span class="stat-value">${usedText}${formatBytes(disk.max)}</span>
-                                `;
-                                disksContainer.appendChild(diskRow);
-                            });
-                        } else if (res.maxdisk) {
+                const disksContainer = item.querySelector('#disks-container');
+                if (disksContainer) {
+                    disksContainer.innerHTML = '';
+                    if (details.disks && details.disks.length > 0) {
+                        details.disks.forEach(disk => {
                             const diskRow = document.createElement('div');
                             diskRow.className = 'stat-row';
                             const isVM = res.type === 'qemu';
-                            const diskPerc = isVM ? 100 : (res.disk / res.maxdisk * 100).toFixed(1);
-                            const usedText = !isVM ? `${formatBytes(res.disk)} / ` : '';
-                            
+                            const perc = isVM ? 100 : ((disk.used !== null) ? (disk.used / disk.max * 100).toFixed(1) : 0);
+                            const usedText = (disk.used !== null && !isVM) ? `${formatBytes(disk.used)} / ` : '';
+
                             diskRow.innerHTML = `
                                 <span class="stat-label">
                                     <svg class="stat-icon" viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2M12,4A1,1 0 0,0 11,5A1,1 0 0,0 12,6A1,1 0 0,0 13,5A1,1 0 0,0 12,4M18,20V4H6V20H18M12,18A3,3 0 0,1 9,15A3,3 0 0,1 12,12A3,3 0 0,1 15,15A3,3 0 0,1 12,18M12,14A1,1 0 0,0 11,15A1,1 0 0,0 12,16A1,1 0 0,0 13,15A1,1 0 0,0 12,14Z"/></svg>
-                                    DISK
+                                    ${disk.name}
                                 </span>
                                 <div class="progress-container">
-                                    <div class="progress-bar disk-bar ${isVM ? 'allocated' : ''}" style="width: ${diskPerc}%"></div>
+                                    <div class="progress-bar disk-bar ${isVM ? 'allocated' : ''}" style="width: ${perc}%"></div>
                                 </div>
-                                <span class="stat-value">${usedText}${formatBytes(res.maxdisk)}</span>
+                                <span class="stat-value">${usedText}${formatBytes(disk.max)}</span>
                             `;
                             disksContainer.appendChild(diskRow);
-                        }
+                        });
+                    } else if (res.maxdisk) {
+                        const diskRow = document.createElement('div');
+                        diskRow.className = 'stat-row';
+                        const isVM = res.type === 'qemu';
+                        const diskPerc = isVM ? 100 : (res.disk / res.maxdisk * 100).toFixed(1);
+                        const usedText = !isVM ? `${formatBytes(res.disk)} / ` : '';
+
+                        diskRow.innerHTML = `
+                            <span class="stat-label">
+                                <svg class="stat-icon" viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2M12,4A1,1 0 0,0 11,5A1,1 0 0,0 12,6A1,1 0 0,0 13,5A1,1 0 0,0 12,4M18,20V4H6V20H18M12,18A3,3 0 0,1 9,15A3,3 0 0,1 12,12A3,3 0 0,1 15,15A3,3 0 0,1 12,18M12,14A1,1 0 0,0 11,15A1,1 0 0,0 12,16A1,1 0 0,0 13,15A1,1 0 0,0 12,14Z"/></svg>
+                                DISK
+                            </span>
+                            <div class="progress-container">
+                                <div class="progress-bar disk-bar ${isVM ? 'allocated' : ''}" style="width: ${diskPerc}%"></div>
+                            </div>
+                            <span class="stat-value">${usedText}${formatBytes(res.maxdisk)}</span>
+                        `;
+                        disksContainer.appendChild(diskRow);
                     }
-                }).catch(err => console.error('Details error:', err));
+                }
+            };
+
+            let detailsLoaded = false;
+            const ensureDetailsLoaded = () => {
+                if (detailsLoaded) return;
+                if (!resourceApi) return;
+                if (!(res.status === 'running' || res.status === 'online' || res.type === 'node')) return;
+                detailsLoaded = true;
+                detailsFetchedKeys.add(getResourceKey(res));
+                scheduleDetailFetch(() => resourceApi.getResourceDetails(res))
+                    .then(renderResourceDetails)
+                    .catch(err => console.error('Details error:', err));
+            };
+
+            // Eagerly fetch details on first render only when the item is currently
+            // expanded (default-expand or restored expansion state). Otherwise we
+            // wait for the user to click the row to keep large clusters responsive.
+            if (item.classList.contains('expanded')) {
+                ensureDetailsLoaded();
+            } else {
+                const observer = new MutationObserver(() => {
+                    if (item.classList.contains('expanded')) {
+                        ensureDetailsLoaded();
+                        observer.disconnect();
+                    }
+                });
+                observer.observe(item, { attributes: true, attributeFilter: ['class'] });
             }
 
             const tagsContainer = item.querySelector('.user-tags');
@@ -3109,6 +3420,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const btnShutdown = powerControls?.querySelector('.b-shutdown');
             const btnStop = powerControls?.querySelector('.b-stop');
             const btnReboot = powerControls?.querySelector('.b-reboot');
+            const btnPause = powerControls?.querySelector('.b-pause');
+            const btnResume = powerControls?.querySelector('.b-resume');
             const powerStatus = powerControls?.querySelector('.power-status');
             const hasPowerControls = Boolean(powerControls && btnStart && btnShutdown && btnStop && btnReboot && powerStatus);
 
@@ -3116,11 +3429,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!hasPowerControls) return;
                 const status = res.status;
                 const type = res.type;
-                [btnStart, btnShutdown, btnStop, btnReboot].forEach(b => b.classList.add('hidden'));
+                [btnStart, btnShutdown, btnStop, btnReboot, btnPause, btnResume].forEach(b => b && b.classList.add('hidden'));
 
                 if (type === 'node') {
                     btnShutdown.classList.remove('hidden');
                     btnReboot.classList.remove('hidden');
+                } else if (type === 'qemu') {
+                    if (status === 'stopped') {
+                        btnStart.classList.remove('hidden');
+                    } else if (status === 'running') {
+                        btnShutdown.classList.remove('hidden');
+                        btnStop.classList.remove('hidden');
+                        btnReboot.classList.remove('hidden');
+                        btnPause?.classList.remove('hidden');
+                    } else if (status === 'paused' || status === 'suspended') {
+                        btnResume?.classList.remove('hidden');
+                        btnStop.classList.remove('hidden');
+                    }
                 } else {
                     if (status === 'stopped') {
                         btnStart.classList.remove('hidden');
@@ -3178,7 +3503,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!hasPowerControls) return;
                 powerStatus.classList.remove('hidden');
                 powerStatus.textContent = chrome.i18n.getMessage('sendingAction') || 'Sending...';
-                [btnStart, btnShutdown, btnStop, btnReboot].forEach(b => b.style.pointerEvents = 'none');
+                [btnStart, btnShutdown, btnStop, btnReboot, btnPause, btnResume].forEach(b => {
+                    if (b) b.style.pointerEvents = 'none';
+                });
 
                 try {
                     if (res.type === 'node') {
@@ -3193,11 +3520,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const resId = res.vmid ? `vm-${clusterSegment}-${res.vmid}` : `node-${clusterSegment}-${res.node}`;
                     writeScopedUiValue('lastActiveResource', resId);
 
-                    // Determine target status for polling
-                    if (action === 'start') {
+                    if (action === 'start' || action === 'resume') {
                         pollStatus('running');
                     } else if (action === 'shutdown' || action === 'stop') {
                         pollStatus('stopped');
+                    } else if (action === 'pause') {
+                        pollStatus('paused');
                     } else {
                         // Reboot or other: wait fixed time
                         setTimeout(() => fetchAndRender(), 4500);
@@ -3207,17 +3535,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                     powerStatus.textContent = 'Error!';
                     setTimeout(() => {
                         powerStatus.classList.add('hidden');
-                        [btnStart, btnShutdown, btnStop, btnReboot].forEach(b => b.style.pointerEvents = 'auto');
+                        [btnStart, btnShutdown, btnStop, btnReboot, btnPause, btnResume].forEach(b => {
+                            if (b) b.style.pointerEvents = 'auto';
+                        });
                     }, 3000);
                 }
             };
 
+            const wrapPowerClick = (button, action) => {
+                if (!button) return;
+                button.onclick = (event) => {
+                    event.stopPropagation();
+                    if (requirePowerConfirmation(button, res, action)) return;
+                    handleAction(action);
+                };
+            };
+
             if (hasPowerControls) {
-                btnStart.onclick = (e) => { e.stopPropagation(); handleAction('start'); };
-                btnShutdown.onclick = (e) => { e.stopPropagation(); handleAction('shutdown'); };
-                btnStop.onclick = (e) => { e.stopPropagation(); handleAction('stop'); };
-                btnReboot.onclick = (e) => { e.stopPropagation(); handleAction('reboot'); };
+                wrapPowerClick(btnStart, 'start');
+                wrapPowerClick(btnShutdown, 'shutdown');
+                wrapPowerClick(btnStop, 'stop');
+                wrapPowerClick(btnReboot, 'reboot');
+                wrapPowerClick(btnPause, 'pause');
+                wrapPowerClick(btnResume, 'resume');
             }
+
+            setupSnapshotsSection(item, res, resourceApi);
 
             // Console and Spice Logic
             if (res.type === 'node') {
@@ -3683,6 +4026,72 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function hasAnyActiveFilter() {
+        const query = searchInput.value.trim();
+        if (query) return true;
+        if (activeFilters.tag) return true;
+        const allTypesActive = ['node', 'qemu', 'lxc'].every((t) => activeFilters.types.includes(t));
+        if (!allTypesActive) return true;
+        const allStatusesActive = ['running', 'stopped'].every((s) => activeFilters.statuses.includes(s));
+        if (!allStatusesActive) return true;
+        return false;
+    }
+
+    function clearAllFilters() {
+        searchInput.value = '';
+        const clearBtn = document.getElementById('search-clear-btn');
+        if (clearBtn) clearBtn.classList.add('hidden');
+        activeFilters.types = ['node', 'qemu', 'lxc'];
+        activeFilters.statuses = ['running', 'stopped'];
+        activeFilters.tag = null;
+        document.querySelectorAll('.filter-pill').forEach((pill) => pill.classList.add('active'));
+        document.querySelectorAll('.tag-filter-pill').forEach((pill) => pill.classList.remove('active'));
+        filterAndRender();
+    }
+
+    function renderEmptyState(filteredCount) {
+        if (filteredCount > 0) return;
+        if (!resourceList) return;
+        const filtersActive = hasAnyActiveFilter();
+        const totalCount = allResources.length;
+        const isMultiClusterView = activeClusterTabId === ALL_CLUSTERS_TAB_ID || activeClusterTabId === FAVORITES_TAB_ID;
+        const hasErrorOverlay = loadingOverlay && !loadingOverlay.classList.contains('hidden');
+        if (hasErrorOverlay) return;
+
+        const hint = document.createElement('div');
+        hint.className = 'empty-list-hint';
+        const titleEl = document.createElement('div');
+        titleEl.className = 'empty-list-hint-title';
+        const textEl = document.createElement('div');
+        textEl.className = 'empty-list-hint-text';
+
+        if (totalCount > 0 && filtersActive) {
+            titleEl.textContent = chrome.i18n.getMessage('emptyListNoMatchesTitle') || 'No resources match your search';
+            textEl.textContent = chrome.i18n.getMessage('emptyListNoMatchesText') || 'Try clearing the search or enabling more filters.';
+            hint.append(titleEl, textEl);
+            const actions = document.createElement('div');
+            actions.className = 'empty-list-hint-actions';
+            const clearBtn = document.createElement('button');
+            clearBtn.type = 'button';
+            clearBtn.textContent = chrome.i18n.getMessage('emptyListClearFilters') || 'Clear filters';
+            clearBtn.addEventListener('click', clearAllFilters);
+            actions.appendChild(clearBtn);
+            hint.appendChild(actions);
+        } else if (totalCount === 0 && !isMultiClusterView && clusterLoadErrors.size === 0) {
+            titleEl.textContent = chrome.i18n.getMessage('emptyListClusterEmptyTitle') || 'Cluster is reachable but has no resources';
+            textEl.textContent = chrome.i18n.getMessage('emptyListClusterEmptyText') || 'The Proxmox API answered with an empty list. If this is unexpected, your API token may be missing audit permissions.';
+            hint.append(titleEl, textEl);
+        } else if (totalCount === 0) {
+            titleEl.textContent = chrome.i18n.getMessage('emptyListNotConnectedTitle') || 'No resources to display';
+            textEl.textContent = chrome.i18n.getMessage('emptyListNotConnectedText') || 'Check your API token, that the Proxmox host is reachable, and that you have signed in to the cluster at least once in this browser.';
+            hint.append(titleEl, textEl);
+        } else {
+            return;
+        }
+
+        resourceList.appendChild(hint);
+    }
+
     function filterAndRender() {
         const query = searchInput.value.toLowerCase().trim();
         
@@ -3719,6 +4128,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                    type.includes(query) || ip.includes(query) || tags.includes(query);
         });
         renderResources(filtered);
+        renderEmptyState(filtered.length);
     }
 
     function renderTagFilters(resources) {
@@ -3843,5 +4253,599 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    }
+
+    function isPopupContextHidden() {
+        return document.visibilityState === 'hidden';
+    }
+
+    function clearAutoRefreshTimer() {
+        if (autoRefreshTimer !== null) {
+            clearTimeout(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
+    }
+
+    function scheduleAutoRefresh() {
+        clearAutoRefreshTimer();
+        if (!isAutoRefreshEnabled(autoRefreshIntervalSeconds)) return;
+        if (document.body.classList.contains('settings-view-active')) return;
+        if (!hasConfiguredCluster()) return;
+        const intervalMs = autoRefreshIntervalSeconds * 1000;
+        autoRefreshTimer = setTimeout(async () => {
+            autoRefreshTimer = null;
+            if (isAutoRefreshInFlight) {
+                scheduleAutoRefresh();
+                return;
+            }
+            if (isPopupContextHidden() || document.body.classList.contains('settings-view-active')) {
+                scheduleAutoRefresh();
+                return;
+            }
+            isAutoRefreshInFlight = true;
+            try {
+                await fetchAndRender();
+            } catch (_error) {
+                // fetchAndRender already handles its own error UX.
+            } finally {
+                isAutoRefreshInFlight = false;
+                scheduleAutoRefresh();
+            }
+        }, intervalMs);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            scheduleAutoRefresh();
+        } else {
+            clearAutoRefreshTimer();
+        }
+    });
+
+    const POWER_DESTRUCTIVE_ACTIONS = new Set(['stop', 'shutdown', 'reboot', 'pause', 'resume']);
+
+    function getPowerConfirmKey(res, action) {
+        return `${getResourceKey(res)}::${action}`;
+    }
+
+    function clearAllPendingPowerConfirmations() {
+        pendingPowerConfirmations.forEach((entry) => {
+            if (entry.timer) clearTimeout(entry.timer);
+            if (entry.button) {
+                entry.button.classList.remove('confirm-pending');
+                if (entry.previousLabel !== undefined) {
+                    entry.button.title = entry.previousLabel;
+                }
+            }
+        });
+        pendingPowerConfirmations.clear();
+    }
+
+    function clearPowerConfirmation(key) {
+        const entry = pendingPowerConfirmations.get(key);
+        if (!entry) return;
+        if (entry.timer) clearTimeout(entry.timer);
+        if (entry.button) {
+            entry.button.classList.remove('confirm-pending');
+            entry.button.title = entry.previousLabel ?? '';
+        }
+        pendingPowerConfirmations.delete(key);
+    }
+
+    function getPowerConfirmLabel(action) {
+        const messageId = {
+            stop: 'powerConfirmStop',
+            shutdown: 'powerConfirmShutdown',
+            reboot: 'powerConfirmReboot',
+            pause: 'powerConfirmPause',
+            resume: 'powerConfirmResume'
+        }[action];
+        return chrome.i18n.getMessage(messageId) || 'Click again to confirm';
+    }
+
+    function requirePowerConfirmation(button, res, action) {
+        if (skipPowerConfirmations) return false;
+        if (!POWER_DESTRUCTIVE_ACTIONS.has(action)) return false;
+        if (!button) return false;
+        const key = getPowerConfirmKey(res, action);
+        const existing = pendingPowerConfirmations.get(key);
+        if (existing) {
+            clearPowerConfirmation(key);
+            return false;
+        }
+        const previousLabel = button.title || '';
+        button.classList.add('confirm-pending');
+        button.title = getPowerConfirmLabel(action);
+        const timer = setTimeout(() => clearPowerConfirmation(key), POWER_CONFIRM_TIMEOUT_MS);
+        pendingPowerConfirmations.set(key, { timer, button, previousLabel });
+        return true;
+    }
+
+    function applyGroupByNode(sortedResources) {
+        const fragment = document.createDocumentFragment();
+        const grouped = new Map();
+        const orderedNodes = [];
+        sortedResources.forEach((resource, index) => {
+            const isNode = resource.type === 'node';
+            const nodeKey = isNode
+                ? `__node__${resource.__clusterId || 'cluster'}::${resource.node || resource.name || ''}`
+                : `${resource.__clusterId || 'cluster'}::${resource.node || 'unassigned'}`;
+            if (!grouped.has(nodeKey)) {
+                grouped.set(nodeKey, {
+                    nodeName: resource.node || resource.name || 'unknown',
+                    clusterName: resource.__clusterName || '',
+                    children: [],
+                    nodeResource: null,
+                    firstIndex: index
+                });
+                orderedNodes.push(nodeKey);
+            }
+            const bucket = grouped.get(nodeKey);
+            if (isNode) {
+                bucket.nodeResource = resource;
+            } else {
+                bucket.children.push(resource);
+            }
+        });
+
+        const ordered = [];
+        orderedNodes.forEach((key) => {
+            const bucket = grouped.get(key);
+            if (bucket.nodeResource) ordered.push(bucket.nodeResource);
+            ordered.push(...bucket.children);
+            bucket.headerInfo = {
+                nodeName: bucket.nodeName,
+                clusterName: bucket.clusterName,
+                count: bucket.children.length
+            };
+        });
+        return { ordered, groupedByKey: grouped, orderedNodes };
+    }
+
+    function renderGroupHeader(info) {
+        const header = document.createElement('div');
+        header.className = 'group-header';
+        const labelText = chrome.i18n.getMessage('groupNodeHeader') || 'Node';
+        const clusterPart = info.clusterName ? ` · ${escapeHtml(info.clusterName)}` : '';
+        header.innerHTML = `
+            <span>${escapeHtml(labelText)}</span>
+            <span class="group-header-name">${escapeHtml(info.nodeName)}</span>
+            <span class="group-header-count">${escapeHtml(`${info.count} guest${info.count === 1 ? '' : 's'}${clusterPart}`)}</span>
+        `;
+        return header;
+    }
+
+    function computeClusterDashboardSummary(resources) {
+        let cpuTotal = 0;
+        let cpuMax = 0;
+        let memUsed = 0;
+        let memMax = 0;
+        let diskUsed = 0;
+        let diskMax = 0;
+        let nodesOnline = 0;
+        let nodesTotal = 0;
+        let guestsRunning = 0;
+        resources.forEach((res) => {
+            if (res.type === 'node') {
+                nodesTotal += 1;
+                if (res.status === 'online' || res.status === 'running') nodesOnline += 1;
+                if (typeof res.maxcpu === 'number' && res.maxcpu > 0) {
+                    cpuMax += res.maxcpu;
+                    cpuTotal += (typeof res.cpu === 'number' ? res.cpu : 0) * res.maxcpu;
+                }
+                if (typeof res.maxmem === 'number' && res.maxmem > 0) {
+                    memMax += res.maxmem;
+                    memUsed += typeof res.mem === 'number' ? res.mem : 0;
+                }
+            } else if (res.type === 'qemu' || res.type === 'lxc') {
+                if (res.status === 'running') guestsRunning += 1;
+                if (typeof res.maxdisk === 'number' && res.maxdisk > 0) {
+                    diskMax += res.maxdisk;
+                    if (res.type === 'lxc' && typeof res.disk === 'number') {
+                        diskUsed += res.disk;
+                    }
+                }
+            } else if (res.type === 'storage') {
+                if (typeof res.maxdisk === 'number' && res.maxdisk > 0) {
+                    diskMax += res.maxdisk;
+                    diskUsed += typeof res.disk === 'number' ? res.disk : 0;
+                }
+            }
+        });
+        const cpuPercent = cpuMax > 0 ? Math.min(100, (cpuTotal / cpuMax) * 100) : 0;
+        const memPercent = memMax > 0 ? Math.min(100, (memUsed / memMax) * 100) : 0;
+        const diskPercent = diskMax > 0 ? Math.min(100, (diskUsed / diskMax) * 100) : 0;
+        return {
+            cpuPercent,
+            memPercent,
+            diskPercent,
+            memUsed,
+            memMax,
+            diskUsed,
+            diskMax,
+            nodesOnline,
+            nodesTotal,
+            guestsRunning
+        };
+    }
+
+    function severityClass(percent) {
+        if (percent >= 90) return 'danger';
+        if (percent >= 70) return 'warn';
+        return '';
+    }
+
+    function renderClusterDashboard() {
+        if (!clusterDashboard) return;
+        if (!showClusterDashboardEnabled || !allResources.length) {
+            clusterDashboard.classList.add('hidden');
+            clusterDashboard.innerHTML = '';
+            renderClusterTasksPanel();
+            return;
+        }
+        const summary = computeClusterDashboardSummary(allResources);
+        if (!summary.nodesTotal && !summary.guestsRunning) {
+            clusterDashboard.classList.add('hidden');
+            clusterDashboard.innerHTML = '';
+            renderClusterTasksPanel();
+            return;
+        }
+        const cpuLabel = chrome.i18n.getMessage('dashboardCpuLabel') || 'CPU usage';
+        const memLabel = chrome.i18n.getMessage('dashboardMemLabel') || 'Memory usage';
+        const diskLabel = chrome.i18n.getMessage('dashboardStorageLabel') || 'Storage usage';
+        const nodesLabel = chrome.i18n.getMessage('dashboardNodesLabel') || 'Nodes online';
+        const guestsLabel = chrome.i18n.getMessage('dashboardGuestsLabel') || 'Guests running';
+        clusterDashboard.innerHTML = `
+            <div class="cluster-dashboard-tile ${severityClass(summary.cpuPercent)}">
+                <span class="cluster-dashboard-tile-label">${escapeHtml(cpuLabel)}</span>
+                <span class="cluster-dashboard-tile-value">${summary.cpuPercent.toFixed(1)}%</span>
+                <span class="cluster-dashboard-tile-bar"><span style="width:${summary.cpuPercent}%"></span></span>
+            </div>
+            <div class="cluster-dashboard-tile ${severityClass(summary.memPercent)}">
+                <span class="cluster-dashboard-tile-label">${escapeHtml(memLabel)}</span>
+                <span class="cluster-dashboard-tile-value">${formatBytes(summary.memUsed)} / ${formatBytes(summary.memMax)}</span>
+                <span class="cluster-dashboard-tile-bar"><span style="width:${summary.memPercent}%"></span></span>
+            </div>
+            <div class="cluster-dashboard-tile ${severityClass(summary.diskPercent)}">
+                <span class="cluster-dashboard-tile-label">${escapeHtml(diskLabel)}</span>
+                <span class="cluster-dashboard-tile-value">${formatBytes(summary.diskUsed)} / ${formatBytes(summary.diskMax)}</span>
+                <span class="cluster-dashboard-tile-bar"><span style="width:${summary.diskPercent}%"></span></span>
+            </div>
+            <div class="cluster-dashboard-tile">
+                <span class="cluster-dashboard-tile-label">${escapeHtml(nodesLabel)}</span>
+                <span class="cluster-dashboard-tile-value">${summary.nodesOnline} / ${summary.nodesTotal}</span>
+            </div>
+            <div class="cluster-dashboard-tile">
+                <span class="cluster-dashboard-tile-label">${escapeHtml(guestsLabel)}</span>
+                <span class="cluster-dashboard-tile-value">${summary.guestsRunning}</span>
+            </div>
+        `;
+        clusterDashboard.classList.remove('hidden');
+        renderClusterTasksPanel();
+    }
+
+    function getDashboardTaskApi() {
+        // Pick the first available cluster API — task panel is best-effort and a
+        // single cluster's archive already gives a useful overview.
+        if (api) return api;
+        const first = apiClients.values().next();
+        return first.done ? null : first.value;
+    }
+
+    function describeTask(task) {
+        const id = String(task.id || '').trim();
+        const node = String(task.node || '').trim();
+        const type = String(task.type || '').trim();
+        const userRaw = String(task.user || '').trim();
+        const user = userRaw ? userRaw.split('@')[0] : '';
+        const target = id ? `${type} ${id}` : type;
+        return [target, node, user].filter(Boolean).join(' · ');
+    }
+
+    function classifyTaskStatus(task) {
+        const status = String(task.status || '').toLowerCase();
+        if (!task.endtime || status === 'running' || status === '') return 'running';
+        if (status === 'ok') return 'ok';
+        return 'failed';
+    }
+
+    function formatTaskTime(value) {
+        const seconds = Number(value);
+        if (!Number.isFinite(seconds) || seconds <= 0) return '';
+        try {
+            return new Date(seconds * 1000).toLocaleTimeString();
+        } catch (_error) {
+            return '';
+        }
+    }
+
+    let clusterTasksLoading = false;
+
+    async function renderClusterTasksPanel() {
+        if (!clusterTasksPanel || !clusterTasksList) return;
+        if (!showClusterDashboardEnabled || !hasConfiguredCluster()) {
+            clusterTasksPanel.classList.add('hidden');
+            clusterTasksList.innerHTML = '';
+            return;
+        }
+        const taskApi = getDashboardTaskApi();
+        if (!taskApi) {
+            clusterTasksPanel.classList.add('hidden');
+            clusterTasksList.innerHTML = '';
+            return;
+        }
+        clusterTasksPanel.classList.remove('hidden');
+        if (clusterTasksLoading) return;
+        clusterTasksLoading = true;
+        clusterTasksList.textContent = chrome.i18n.getMessage('tasksLoading') || 'Loading tasks...';
+        try {
+            const tasks = await taskApi.getClusterTasks({ limit: 12 });
+            clusterTasksList.innerHTML = '';
+            if (!Array.isArray(tasks) || tasks.length === 0) {
+                clusterTasksList.textContent = chrome.i18n.getMessage('tasksEmpty') || 'No recent tasks.';
+                return;
+            }
+            const sorted = [...tasks].sort((a, b) => Number(b.starttime || 0) - Number(a.starttime || 0));
+            sorted.slice(0, 12).forEach((task) => {
+                const row = document.createElement('div');
+                row.className = 'cluster-task-row';
+
+                const kind = classifyTaskStatus(task);
+                const statusEl = document.createElement('span');
+                statusEl.className = `cluster-task-status is-${kind}`;
+                statusEl.textContent = (
+                    chrome.i18n.getMessage(
+                        kind === 'ok' ? 'tasksStatusOk' : kind === 'running' ? 'tasksStatusRunning' : 'tasksStatusFailed'
+                    ) || kind
+                );
+
+                const info = document.createElement('div');
+                info.className = 'cluster-task-info';
+                const typeEl = document.createElement('span');
+                typeEl.className = 'cluster-task-type';
+                typeEl.textContent = task.type || 'task';
+                const metaEl = document.createElement('span');
+                metaEl.className = 'cluster-task-meta';
+                metaEl.textContent = describeTask(task);
+                info.append(typeEl, metaEl);
+
+                const time = document.createElement('span');
+                time.className = 'cluster-task-time';
+                time.textContent = formatTaskTime(task.starttime);
+
+                row.append(statusEl, info, time);
+                clusterTasksList.appendChild(row);
+            });
+        } catch (error) {
+            clusterTasksList.innerHTML = '';
+            clusterTasksList.textContent = chrome.i18n.getMessage('tasksLoadFailed') || 'Could not load cluster tasks.';
+        } finally {
+            clusterTasksLoading = false;
+        }
+    }
+
+    clusterTasksRefreshBtn?.addEventListener('click', () => {
+        renderClusterTasksPanel();
+    });
+
+    function isValidSnapshotName(name) {
+        return /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(String(name || ''));
+    }
+
+    function formatSnapshotTimestamp(snaptime) {
+        const seconds = Number(snaptime);
+        if (!Number.isFinite(seconds) || seconds <= 0) return '';
+        try {
+            return new Date(seconds * 1000).toLocaleString();
+        } catch (_error) {
+            return '';
+        }
+    }
+
+    function setSnapshotsFeedback(section, message, level = 'info') {
+        const feedback = section.querySelector('.snapshots-feedback');
+        if (!feedback) return;
+        feedback.textContent = message || '';
+        feedback.classList.remove('is-error', 'is-success');
+        if (level === 'error') feedback.classList.add('is-error');
+        if (level === 'success') feedback.classList.add('is-success');
+    }
+
+    async function renderSnapshotsList(section, listEl, res, resourceApi) {
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        const loadingMessage = chrome.i18n.getMessage('snapshotsLoading') || 'Loading snapshots...';
+        listEl.textContent = loadingMessage;
+        try {
+            const snapshots = await resourceApi.getSnapshots(res.node, res.type, res.vmid);
+            listEl.innerHTML = '';
+            if (!Array.isArray(snapshots) || snapshots.length === 0) {
+                listEl.textContent = chrome.i18n.getMessage('snapshotsEmpty') || 'No snapshots yet.';
+                return;
+            }
+            const sorted = [...snapshots].sort((a, b) => {
+                if (a.name === 'current') return 1;
+                if (b.name === 'current') return -1;
+                return Number(b.snaptime || 0) - Number(a.snaptime || 0);
+            });
+            sorted.forEach((snap) => {
+                const row = document.createElement('div');
+                row.className = 'snapshot-row';
+                if (snap.name === 'current') row.classList.add('is-current');
+                const info = document.createElement('div');
+                info.className = 'snapshot-info';
+                const name = document.createElement('span');
+                name.className = 'snapshot-name';
+                name.textContent = snap.name === 'current'
+                    ? `${snap.name} (${chrome.i18n.getMessage('snapshotsCurrentLabel') || 'current state'})`
+                    : snap.name;
+                info.appendChild(name);
+                const meta = document.createElement('span');
+                meta.className = 'snapshot-meta';
+                const parts = [];
+                const ts = formatSnapshotTimestamp(snap.snaptime);
+                if (ts) parts.push(ts);
+                if (snap.description) parts.push(snap.description);
+                meta.textContent = parts.join(' — ');
+                info.appendChild(meta);
+                row.appendChild(info);
+
+                if (snap.name !== 'current') {
+                    const rollbackBtn = document.createElement('button');
+                    rollbackBtn.type = 'button';
+                    rollbackBtn.className = 'snapshots-rollback-btn';
+                    rollbackBtn.textContent = chrome.i18n.getMessage('snapshotsRollbackBtn') || 'Rollback';
+                    let pendingRollback = false;
+                    rollbackBtn.addEventListener('click', async (event) => {
+                        event.stopPropagation();
+                        if (!pendingRollback && !skipPowerConfirmations) {
+                            pendingRollback = true;
+                            const previousLabel = rollbackBtn.textContent;
+                            rollbackBtn.textContent = chrome.i18n.getMessage('snapshotsConfirmRollback') || 'Click again to rollback';
+                            rollbackBtn.classList.add('confirm-pending');
+                            setTimeout(() => {
+                                pendingRollback = false;
+                                rollbackBtn.textContent = previousLabel;
+                                rollbackBtn.classList.remove('confirm-pending');
+                            }, POWER_CONFIRM_TIMEOUT_MS);
+                            return;
+                        }
+                        pendingRollback = false;
+                        rollbackBtn.classList.remove('confirm-pending');
+                        rollbackBtn.disabled = true;
+                        try {
+                            await resourceApi.rollbackSnapshot(res.node, res.type, res.vmid, snap.name);
+                            setSnapshotsFeedback(section, chrome.i18n.getMessage('snapshotsRollbackSuccess') || 'Rollback queued.', 'success');
+                            setTimeout(() => renderSnapshotsList(section, listEl, res, resourceApi), 2500);
+                        } catch (error) {
+                            setSnapshotsFeedback(section, `${chrome.i18n.getMessage('snapshotsActionFailed') || 'Snapshot action failed:'} ${error.message || error}`, 'error');
+                        } finally {
+                            rollbackBtn.disabled = false;
+                            rollbackBtn.textContent = chrome.i18n.getMessage('snapshotsRollbackBtn') || 'Rollback';
+                        }
+                    });
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.type = 'button';
+                    deleteBtn.className = 'snapshots-delete-btn';
+                    deleteBtn.textContent = chrome.i18n.getMessage('snapshotsDeleteBtn') || 'Delete';
+                    let pendingDelete = false;
+                    deleteBtn.addEventListener('click', async (event) => {
+                        event.stopPropagation();
+                        if (!pendingDelete && !skipPowerConfirmations) {
+                            pendingDelete = true;
+                            const previousLabel = deleteBtn.textContent;
+                            deleteBtn.textContent = chrome.i18n.getMessage('snapshotsConfirmDelete') || 'Click again to delete';
+                            deleteBtn.classList.add('confirm-pending');
+                            setTimeout(() => {
+                                pendingDelete = false;
+                                deleteBtn.textContent = previousLabel;
+                                deleteBtn.classList.remove('confirm-pending');
+                            }, POWER_CONFIRM_TIMEOUT_MS);
+                            return;
+                        }
+                        pendingDelete = false;
+                        deleteBtn.classList.remove('confirm-pending');
+                        deleteBtn.disabled = true;
+                        try {
+                            await resourceApi.deleteSnapshot(res.node, res.type, res.vmid, snap.name);
+                            setSnapshotsFeedback(section, chrome.i18n.getMessage('snapshotsDeletedSuccess') || 'Snapshot deleted.', 'success');
+                            setTimeout(() => renderSnapshotsList(section, listEl, res, resourceApi), 1500);
+                        } catch (error) {
+                            setSnapshotsFeedback(section, `${chrome.i18n.getMessage('snapshotsActionFailed') || 'Snapshot action failed:'} ${error.message || error}`, 'error');
+                        } finally {
+                            deleteBtn.disabled = false;
+                            deleteBtn.textContent = chrome.i18n.getMessage('snapshotsDeleteBtn') || 'Delete';
+                        }
+                    });
+
+                    const actions = document.createElement('div');
+                    actions.className = 'snapshot-actions';
+                    actions.append(rollbackBtn, deleteBtn);
+                    row.appendChild(actions);
+                } else {
+                    row.appendChild(document.createElement('div'));
+                }
+                listEl.appendChild(row);
+            });
+        } catch (error) {
+            listEl.innerHTML = '';
+            listEl.textContent = chrome.i18n.getMessage('snapshotsLoadFailed') || 'Could not load snapshots.';
+            setSnapshotsFeedback(section, error.message || String(error), 'error');
+        }
+    }
+
+    function setupSnapshotsSection(item, res, resourceApi) {
+        const section = item.querySelector('.snapshots-section');
+        if (!section) return;
+        if (!resourceApi || !res || (res.type !== 'qemu' && res.type !== 'lxc') || !res.vmid) {
+            section.classList.add('hidden');
+            return;
+        }
+        section.classList.remove('hidden');
+        const list = section.querySelector('.snapshots-list');
+        const createBtn = section.querySelector('.snapshots-create-btn');
+        const form = section.querySelector('.snapshots-create-form');
+        const nameInput = section.querySelector('.snapshots-name-input');
+        const descInput = section.querySelector('.snapshots-description-input');
+        const confirmBtn = section.querySelector('.snapshots-confirm-btn');
+        const cancelBtn = section.querySelector('.snapshots-cancel-btn');
+
+        let loaded = false;
+        const ensureLoaded = () => {
+            if (loaded) return;
+            loaded = true;
+            renderSnapshotsList(section, list, res, resourceApi);
+        };
+        // Lazy-load when item is expanded
+        if (item.classList.contains('expanded')) {
+            ensureLoaded();
+        } else {
+            const observer = new MutationObserver(() => {
+                if (item.classList.contains('expanded')) {
+                    ensureLoaded();
+                    observer.disconnect();
+                }
+            });
+            observer.observe(item, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        createBtn?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            form?.classList.remove('hidden');
+            if (nameInput) {
+                nameInput.value = '';
+                nameInput.focus();
+            }
+            if (descInput) descInput.value = '';
+            setSnapshotsFeedback(section, '');
+        });
+
+        cancelBtn?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            form?.classList.add('hidden');
+            setSnapshotsFeedback(section, '');
+        });
+
+        confirmBtn?.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            const name = String(nameInput?.value || '').trim();
+            const description = String(descInput?.value || '').trim();
+            if (!isValidSnapshotName(name)) {
+                setSnapshotsFeedback(section, chrome.i18n.getMessage('snapshotsCreatePromptInvalid') || 'Invalid snapshot name.', 'error');
+                return;
+            }
+            confirmBtn.disabled = true;
+            try {
+                await resourceApi.createSnapshot(res.node, res.type, res.vmid, name, description);
+                setSnapshotsFeedback(section, chrome.i18n.getMessage('snapshotsCreatedSuccess') || 'Snapshot created.', 'success');
+                form?.classList.add('hidden');
+                setTimeout(() => renderSnapshotsList(section, list, res, resourceApi), 1500);
+            } catch (error) {
+                setSnapshotsFeedback(section, `${chrome.i18n.getMessage('snapshotsActionFailed') || 'Snapshot action failed:'} ${error.message || error}`, 'error');
+            } finally {
+                confirmBtn.disabled = false;
+            }
+        });
     }
 });
