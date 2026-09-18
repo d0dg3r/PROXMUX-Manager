@@ -319,7 +319,7 @@
 
                 <div class="help-item">
                     <h4>Automatic Failover</h4>
-                    <p>Once you connect to your first node, the extension automatically discovers all other nodes in that cluster. If your primary node goes down, the extension will attempt to fetch data from the other nodes automatically. Each configured cluster keeps its own failover URL list.</p>
+                    <p>Once you connect to your first node, the extension automatically discovers all other nodes in that cluster. If your primary node goes down, the extension will attempt to fetch data from the other nodes automatically. Each configured cluster keeps its own failover URL list. Node names are stored only when they are an IP, an FQDN, or a sibling of the primary hostname (for example <code>pve1.lan</code> plus node <code>pve2</code> becomes <code>pve2.lan</code>). Consoles and session checks follow the live failover host. If the Side Panel cannot open, the toolbar click falls back to the floating window.</p>
                 </div>
 
                 <div class="help-item">
@@ -345,7 +345,7 @@
             <div class="card about-card">
                 <img src="../store/proxmux_logo.png" alt="Logo" class="about-logo">
                 <h2>PROXMUX Manager</h2>
-                <p class="version">Version 1.3.0</p>
+                <p class="version">Version 1.3.1</p>
                 <p data-i18n="aboutProjectCredit">Created 2026 by d0dg3r (Joe Mild).</p>
                 <p data-i18n="aboutProjectHomage">This project is a tribute to Proxmox VE 0.9, first released on April 15, 2008 — and a small nod to the great milestones in computer history: Linux, Git, and Proxmox ;)</p>
                 <p>

@@ -87,6 +87,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activeClusterId = null;
     let pendingOptionsClusterRemovalId = null;
     let pendingOptionsResetConfirmation = false;
+    let pendingOptionsRemoveConfirmTimer = null;
+    let pendingOptionsResetConfirmTimer = null;
+    const DESTRUCTIVE_CONFIRM_TIMEOUT_MS = 4000;
     let isImportingSettings = false;
     let sshAliasOptions = [];
     let mergedSshKeyCatalog = [];
@@ -736,6 +739,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function resetOptionsRemoveClusterConfirmation() {
         pendingOptionsClusterRemovalId = null;
+        if (pendingOptionsRemoveConfirmTimer) {
+            clearTimeout(pendingOptionsRemoveConfirmTimer);
+            pendingOptionsRemoveConfirmTimer = null;
+        }
         if (removeClusterBtn) {
             removeClusterBtn.textContent = 'Remove Cluster';
         }
@@ -743,6 +750,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function resetOptionsResetConfirmation() {
         pendingOptionsResetConfirmation = false;
+        if (pendingOptionsResetConfirmTimer) {
+            clearTimeout(pendingOptionsResetConfirmTimer);
+            pendingOptionsResetConfirmTimer = null;
+        }
         if (resetBtn) {
             resetBtn.textContent = chrome.i18n.getMessage('resetSettings') || 'Reset Settings';
         }
@@ -935,6 +946,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             status.textContent = `Click "Remove Cluster" again to delete "${cluster.name}".`;
             status.style.color = 'var(--text-secondary)';
+            if (pendingOptionsRemoveConfirmTimer) clearTimeout(pendingOptionsRemoveConfirmTimer);
+            pendingOptionsRemoveConfirmTimer = setTimeout(() => {
+                resetOptionsRemoveClusterConfirmation();
+            }, DESTRUCTIVE_CONFIRM_TIMEOUT_MS);
             return;
         }
         const removed = removeClusterAndResolve(clusters, cluster.id, activeClusterId, { ensureOneCluster: true });
@@ -1212,6 +1227,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             resetBtn.textContent = chrome.i18n.getMessage('resetSettingsConfirmAgainLabel') || 'Click again to reset';
             status.textContent = chrome.i18n.getMessage('resetSettingsConfirmAgainHint') || 'Click "Reset Settings" again to reset all settings.';
             status.style.color = 'var(--text-secondary)';
+            if (pendingOptionsResetConfirmTimer) clearTimeout(pendingOptionsResetConfirmTimer);
+            pendingOptionsResetConfirmTimer = setTimeout(() => {
+                resetOptionsResetConfirmation();
+            }, DESTRUCTIVE_CONFIRM_TIMEOUT_MS);
             return;
         }
         resetOptionsResetConfirmation();

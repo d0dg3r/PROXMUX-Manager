@@ -1,12 +1,21 @@
 PROXMUX Manager ist die professionelle Chrome-Erweiterung fuer Proxmox VE Administratoren. Greifen Sie direkt im Browser auf Ihren Virtualisierungs-Cluster zu, ueberwachen Sie Nodes, VMs und Container, und starten Sie Konsolen mit wenigen Klicks.
 
 Hauptfunktionen:
+- Cluster-Dashboard: CPU-, Speicher- und Storage-Kacheln plus Node- und Gast-Gesundheit oben in der Ressourcenliste
+- Gruppierung nach Node: optionale Gruppen mit fixierten Node-Headern und Gastzaehlern
+- Snapshot-Verwaltung: QEMU/LXC Snapshots listen, erstellen, loeschen und zurueckrollen
+- Auto-Refresh: Intervall je Cluster-Tab (Aus, 15s, 30s, 60s, 2m, 5m)
+- Power-Management: Start, Stop, Shutdown, Reboot, Pause, Resume mit Zwei-Klick-Bestaetigung
+- Aktuelle Cluster-Tasks: kompakte Task-Liste unter dem Dashboard
 - Interaktive Tags fuer schnelle, kategorische Filterung im gesamten Cluster
 - Uptime-Anzeige in gut lesbarer Form (z. B. 2d 5h)
 - Ueberblick ueber Status, OS-Typen und IP-Adressen von VM/LXC
 - Flexible Startmodi: Side Panel (Standard) oder persistentes Floating Window
 - Inline Advanced Settings direkt in der aktiven Erweiterungsansicht
+- UI-Skalierung mit Compact/Standard/Large plus Feineinstellung
 - Intelligente Konsolen: noVNC, SPICE (remote-viewer) und Node Shell
+- SSH-Export als OpenSSH-Config, PuTTY-.reg oder CSV
+- TLS-Hinweise bei selbstsignierten Zertifikaten inkl. Ein-Klick "Proxmox-URL oeffnen"
 - Modernes Design mit Dark, Light oder System-Theme
 - Hochverfuegbarkeit durch automatische Node-Erkennung und Failover
 - Sichere lokale Speicherung der API-Token (keine Uebertragung an Dritte)
@@ -14,4 +23,4 @@ Hauptfunktionen:
 Perfekt fuer DevOps-Teams und Home-Server-Enthusiasten, die Proxmox-Infrastruktur schnell, professionell und sicher im Browser verwalten wollen.
 
 Kurzbeschreibung:
-Proxmox VE Cluster im Browser verwalten: Monitoring, Konsolenzugriff, Failover sowie Side Panel oder Floating Window.
+Proxmox VE Cluster im Browser verwalten: Dashboard, Snapshots, Konsolen, Failover sowie Side Panel oder Floating Window.

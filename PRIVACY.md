@@ -1,6 +1,6 @@
 # Privacy Policy for PROXMUX Manager
 
-Last Updated: March 7, 2026
+Last Updated: September 18, 2026
 
 PROXMUX Manager is committed to protecting your privacy. This Privacy Policy explains how our Chrome Extension handles your information.
 
@@ -12,7 +12,7 @@ To function, the extension requires:
 - Your Proxmox VE API URL
 - API Token (User, Realm, Token ID, and Secret)
 
-These credentials are **stored exclusively on your local machine** using Chrome's `chrome.storage.local` API. They are only sent directly to your Proxmox VE server to authenticate API requests. We никогда (never) have access to these credentials.
+These credentials are **stored exclusively on your local machine** using Chrome's `chrome.storage.local` API. They are only sent directly to your Proxmox VE server to authenticate API requests. We never have access to these credentials.
 
 ## 3. Data Transmission
 All communication occurs directly between your browser and your Proxmox VE host using standard HTTPS requests. No intermediate servers are involved.
@@ -20,8 +20,10 @@ All communication occurs directly between your browser and your Proxmox VE host 
 ## 4. Permissions Usage
 - `storage`: Used to save your settings locally.
 - `tabs`: Used to open the console windows.
-- `downloads`: Used to download and open SPICE `.vv` files.
+- `downloads` and `downloads.open`: Used to download and open SPICE `.vv` files and exported settings/SSH files.
 - `sidePanel`: Used to provide a persistent management interface.
+- `cookies`: Used only to detect a local `PVEAuthCookie` so interactive consoles can warn when a browser sign-in is required.
+- `scripting`: Used only for user-initiated, best-effort paste assistance into a Proxmox console tab that the extension just opened.
 - `host_permissions`: Required to communicate with your Proxmox API.
 
 ## 5. Changes to This Policy

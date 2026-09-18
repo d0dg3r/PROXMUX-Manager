@@ -9,7 +9,10 @@ const SCENES = [
   { id: 'resource_expanded', output: 'screenshot_02_resource_expanded_1280x800.png' },
   { id: 'onboarding_no_config', output: 'screenshot_03_onboarding_1280x800.png' },
   { id: 'settings_cluster', output: 'screenshot_04_settings_cluster_1280x800.png' },
-  { id: 'settings_backup', output: 'screenshot_05_settings_backup_1280x800.png' }
+  { id: 'settings_backup', output: 'screenshot_05_settings_backup_1280x800.png' },
+  { id: 'cluster_dashboard', output: 'screenshot_06_cluster_dashboard_1280x800.png' },
+  { id: 'session_banner', output: 'screenshot_07_session_banner_1280x800.png' },
+  { id: 'snapshots_drawer', output: 'screenshot_08_snapshots_1280x800.png' }
 ];
 
 function startStaticServer(rootDir) {
@@ -266,7 +269,8 @@ function buildSeedStorage(sceneId, theme) {
     consoleTabMode: 'duplicate',
     defaultActionClickMode: 'sidepanel',
     scriptsPanelCollapsed: true,
-    activeClusterTabId: '__all__',
+    showClusterDashboard: ['cluster_dashboard', 'session_banner', 'snapshots_drawer'].includes(sceneId),
+    activeClusterTabId: sceneId === 'snapshots_drawer' ? 'production' : '__all__',
     clusters,
     activeClusterId: 'production',
     communityScriptsCatalogCacheV1: {
@@ -420,6 +424,20 @@ async function installHarness(page, sceneId, theme) {
           return createJsonResponse(fixture.qemuAgentNet[Number(vmid)] || { result: [] });
         }
 
+        if (endpoint.startsWith('/cluster/tasks')) {
+          return createJsonResponse(fixture.clusterTasks || [
+            { upid: 'UPID:pve:0001', type: 'qmstart', status: 'OK', node: 'pve-prod-01', user: 'root@pam', starttime: 1710000000, endtime: 1710000008 }
+          ]);
+        }
+
+        match = endpoint.match(/^\/nodes\/([^/]+)\/(qemu|lxc)\/(\d+)\/snapshot$/);
+        if (match) {
+          return createJsonResponse([
+            { name: 'current' },
+            { name: 'pre-upgrade', description: 'before kernel', snaptime: 1710000100 }
+          ]);
+        }
+
         return createJsonResponse({});
       }
 
@@ -530,13 +548,20 @@ async function applyBaseState(page) {
 }
 
 async function applySceneState(page, sceneId) {
-  if (sceneId === 'cluster_multi') {
+  if (sceneId === 'cluster_multi' || sceneId === 'cluster_dashboard' || sceneId === 'session_banner') {
     await page.waitForSelector('.resource-item');
     await page.waitForSelector('#cluster-tabs:not(.hidden)');
+    if (sceneId === 'cluster_dashboard') {
+      await page.waitForSelector('#cluster-dashboard:not(.hidden)');
+      await page.waitForSelector('#cluster-tasks-panel:not(.hidden)');
+    }
+    if (sceneId === 'session_banner') {
+      await page.waitForSelector('#session-banner:not(.hidden)');
+    }
     return;
   }
 
-  if (sceneId === 'resource_expanded') {
+  if (sceneId === 'resource_expanded' || sceneId === 'snapshots_drawer') {
     const targetItemSelector = '[data-id="vm-production-201"]';
     const targetMainSelector = `${targetItemSelector} .item-main`;
     await page.waitForSelector(targetMainSelector, { state: 'visible' });
@@ -566,6 +591,9 @@ async function applySceneState(page, sceneId) {
       const scripts = document.querySelector('.scripts-panel');
       scripts?.classList.add('hidden');
     });
+    if (sceneId === 'snapshots_drawer') {
+      await page.waitForSelector(`${targetItemSelector} .snapshots-section:not(.hidden)`);
+    }
     return;
   }
 

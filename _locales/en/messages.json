@@ -758,6 +758,12 @@
     "connectionFailedKindNetwork": {
         "message": "Network or certificate problem."
     },
+    "connectionFailedKindSelfSigned": {
+        "message": "The TLS certificate is not trusted (often self-signed)."
+    },
+    "connectionFailedKindTls": {
+        "message": "TLS handshake failed while contacting the Proxmox host."
+    },
     "connectionFailedKindAuth": {
         "message": "Authentication failed: check user/realm, token ID and secret."
     },

@@ -20,6 +20,7 @@ const {
   getSshExportMimeType,
   buildSshConfigText,
   collectSshExportTargets,
+  isLinuxResource,
   findSshKeyIdByPath,
   parseSshHostDefaultsText,
   parseSshUserOverridesText,
@@ -41,6 +42,15 @@ test('parses and stringifies SSH override mappings', async () => {
   const text = stringifySshUserOverrides(parsed);
   expect(text).toContain('prod-a-node-pve01: root');
   expect(text).toContain('prod-a-qemu-101: ubuntu');
+});
+
+test('classifies linux guests without matching every l-prefixed OS string', async () => {
+  expect(isLinuxResource('node', '')).toBe(true);
+  expect(isLinuxResource('lxc', '')).toBe(true);
+  expect(isLinuxResource('qemu', 'l26')).toBe(true);
+  expect(isLinuxResource('qemu', 'ubuntu')).toBe(true);
+  expect(isLinuxResource('qemu', 'linux 2.6+')).toBe(true);
+  expect(isLinuxResource('qemu', 'legacy-windows')).toBe(false);
 });
 
 test('builds deterministic alias segments', async () => {

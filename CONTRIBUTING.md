@@ -22,8 +22,11 @@ The following is a set of guidelines for contributing to **PROXMUX Manager**. Th
 
 ## Development Setup
 1. Clone the repository.
-2. Run `npm install` (if applicable).
+2. Run `npm install`.
 3. Load the extension in Chrome via `chrome://extensions/` -> "Load unpacked".
+4. Before opening a pull request, run `npm run check:release` and `npm test`.
+
+Release preparation also requires a consistent version in `manifest.json`, `package.json`, `package-lock.json`, and `options/options.html`, plus matching English/German locale keys.
 
 ## Style Guide
 * Use 4 spaces for indentation.

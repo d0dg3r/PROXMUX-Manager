@@ -758,6 +758,12 @@
     "connectionFailedKindNetwork": {
         "message": "Netzwerk- oder Zertifikatsproblem."
     },
+    "connectionFailedKindSelfSigned": {
+        "message": "Das TLS-Zertifikat wird nicht vertraut (oft selbstsigniert)."
+    },
+    "connectionFailedKindTls": {
+        "message": "Der TLS-Handshake zum Proxmox-Host ist fehlgeschlagen."
+    },
     "connectionFailedKindAuth": {
         "message": "Authentifizierung fehlgeschlagen: prüfe Benutzer/Realm, Token-ID und Secret."
     },

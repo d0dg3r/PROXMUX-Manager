@@ -1,4 +1,9 @@
-import { openOrFocusFloatingWindow } from './lib/window-launcher.js';
+import {
+    attachFloatingWindowLifecycle,
+    openClassicPopupPageAsTab,
+    openOrFocusFloatingWindow,
+    resolveToolbarClickAction
+} from './lib/window-launcher.js';
 
 const DEFAULT_CLICK_MODE_KEY = 'defaultActionClickMode';
 const DEFAULT_CLICK_MODE = 'sidepanel';
@@ -14,11 +19,39 @@ async function getDefaultClickMode() {
 }
 
 async function refreshCachedClickMode() {
-    const mode = await getDefaultClickMode();
-    cachedClickMode = mode;
+    cachedClickMode = await getDefaultClickMode();
+}
+
+async function openManagerFallback(windowId = null) {
+    try {
+        await openOrFocusFloatingWindow();
+    } catch (_error) {
+        await openClassicPopupPageAsTab(windowId);
+    }
+}
+
+async function handleToolbarClick(tab) {
+    const action = resolveToolbarClickAction({
+        clickMode: cachedClickMode,
+        canOpenSidePanel: Boolean(chrome.sidePanel?.open),
+        windowId: tab?.windowId
+    });
+
+    if (action.kind === 'sidepanel') {
+        try {
+            await chrome.sidePanel.open({ windowId: action.windowId });
+            return;
+        } catch (_error) {
+            await openManagerFallback(action.windowId);
+            return;
+        }
+    }
+
+    await openManagerFallback(Number.isInteger(tab?.windowId) ? tab.windowId : null);
 }
 
 refreshCachedClickMode().catch(() => {});
+attachFloatingWindowLifecycle();
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local' || !changes[DEFAULT_CLICK_MODE_KEY]) return;
@@ -27,16 +60,5 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 chrome.action.onClicked.addListener((tab) => {
-    const clickMode = cachedClickMode;
-
-    if (clickMode === 'floating') {
-        openOrFocusFloatingWindow().catch(() => {});
-        return;
-    }
-
-    if (chrome.sidePanel?.open && Number.isInteger(tab?.windowId)) {
-        chrome.sidePanel.open({ windowId: tab.windowId })
-            .catch(() => {});
-        return;
-    }
+    handleToolbarClick(tab).catch(() => {});
 });

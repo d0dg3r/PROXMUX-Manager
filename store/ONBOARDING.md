@@ -2,7 +2,7 @@
 
 This document contains all the text, metadata, and justifications required to submit PROXMUX Manager to the Chrome Web Store.
 
-Current release prep target: `v1.3.0` (align with `CHANGELOG.md` top entry before submission).
+Current release prep target: `v1.3.1` (align with `CHANGELOG.md` top entry before submission).
 
 ## 1. Store Metadata
 
@@ -94,13 +94,17 @@ For convenience during store submission, the current German storefront draft is 
 
 ### How to test manually (if you have a test environment):
 1. Install the extension.
-2. Click the extension icon; verify it opens in Side Panel by default.
+2. Click the extension icon; verify it opens in Side Panel by default. If Side Panel is unavailable, a floating window should open instead.
 3. Click the floating-window control and verify a persistent floating manager window opens.
 4. In the extension header, click the gear icon and verify advanced settings open inline in the same view.
 5. Enter valid Proxmox VE API credentials (URL, User, Token ID, Secret).
 6. Save settings.
 7. The extension will populate the resource list with nodes, VMs, and containers.
-8. Verify console buttons (noVNC, SPICE, Shell/SSH) appear based on resource configuration.
+8. Enable **Show cluster dashboard** and confirm CPU/memory/storage tiles plus recent cluster tasks appear.
+9. Expand a QEMU or LXC guest and verify the snapshot drawer can list snapshots.
+10. If you are not signed in to the Proxmox web UI, confirm the session banner offers **Sign in**.
+11. Change auto-refresh to `30s` and confirm the list stays current while settings stay closed.
+12. Verify console buttons (noVNC, SPICE, Shell/SSH) appear based on resource configuration.
 
 ### API token setup reference (for internal/reviewer prep)
 - Canonical guide: [docs/proxmox-token-setup.md](../docs/proxmox-token-setup.md)
@@ -123,5 +127,8 @@ curl -fsSL 'https://raw.githubusercontent.com/d0dg3r/PROXMUX-Manager/refs/heads/
   - `store/screenshot_03_onboarding_1280x800.png`
   - `store/screenshot_04_settings_cluster_1280x800.png`
   - `store/screenshot_05_settings_backup_1280x800.png`
+  - `store/screenshot_06_cluster_dashboard_1280x800.png`
+  - `store/screenshot_07_session_banner_1280x800.png`
+  - `store/screenshot_08_snapshots_1280x800.png`
 - **Source capture model**: Light and Dark are captured per scene at `640x800` and merged side-by-side to one `1280x800` export.
 - **Marquee/Tile**: 440x280 pixels (`store/small_promo_tile_new.png`).
