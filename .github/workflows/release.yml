@@ -15,6 +15,24 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v6
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Check version and locale parity
+        run: npm run check:release
+
+      - name: Run Playwright tests
+        run: npm test
+
       - name: Get Version from Tag
         id: get_version
         run: |
@@ -60,7 +78,20 @@ jobs:
         id: create_zip
         run: |
           ZIP_NAME="proxmux-${{ steps.get_version.outputs.tag_name }}.zip"
-          zip -r $ZIP_NAME . -x "*.git*" -x "*.gemini*" -x ".github*" -x "node_modules*" -x "*.zip"
+          zip -r $ZIP_NAME . \
+            -x "*.git*" \
+            -x "*.gemini*" \
+            -x ".github*" \
+            -x "node_modules*" \
+            -x "tests*" \
+            -x "playwright.config.js" \
+            -x "playwright-report*" \
+            -x "test-results*" \
+            -x ".agent*" \
+            -x "store/mock*" \
+            -x "store/*.xcf" \
+            -x "docs/portfolio*" \
+            -x "*.zip"
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release

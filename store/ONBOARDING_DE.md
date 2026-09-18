@@ -2,7 +2,7 @@
 
 > Dieses Dokument ist die deutsche Übersetzung von [`store/ONBOARDING.md`](ONBOARDING.md). Die englische Datei bleibt die kanonische Quelle für die Store-Einreichung. Diese Übersetzung dient ausschließlich der Vorbereitung der deutschen Storefront-Einreichung und der internen Abstimmung.
 
-Aktuelles Release-Ziel: `v1.3.0` (vor der Einreichung mit dem obersten Eintrag in `CHANGELOG.md` abgleichen).
+Aktuelles Release-Ziel: `v1.3.1` (vor der Einreichung mit dem obersten Eintrag in `CHANGELOG.md` abgleichen).
 
 ## 1. Store-Metadaten
 
@@ -105,7 +105,11 @@ Perfekt für DevOps-Engineers und Home-Server-Enthusiasten, die Proxmox-Infrastr
 5. Gültige Proxmox-VE-API-Zugangsdaten eingeben (URL, Nutzer, Token-ID, Secret).
 6. Einstellungen speichern.
 7. Die Erweiterung füllt die Ressourcenliste mit Nodes, VMs und Containern.
-8. Prüfen, dass die Konsolen-Buttons (noVNC, SPICE, Shell/SSH) je nach Ressourcen-Konfiguration erscheinen.
+8. **Cluster-Dashboard anzeigen** aktivieren und CPU-/Speicher-/Storage-Kacheln sowie aktuelle Cluster-Tasks prüfen.
+9. Eine QEMU- oder LXC-Ressource aufklappen und den Snapshot-Drawer prüfen.
+10. Ohne Proxmox-Web-UI-Login sollte das Session-Banner **Anmelden** anbieten.
+11. Auto-Refresh auf `30s` stellen und prüfen, dass die Liste aktuell bleibt, solange die Einstellungen geschlossen sind.
+12. Prüfen, dass die Konsolen-Buttons (noVNC, SPICE, Shell/SSH) je nach Ressourcen-Konfiguration erscheinen.
 
 ### API-Token-Setup-Referenz (intern / Reviewer-Vorbereitung)
 
@@ -130,5 +134,8 @@ curl -fsSL 'https://raw.githubusercontent.com/d0dg3r/PROXMUX-Manager/refs/heads/
   - `store/screenshot_03_onboarding_1280x800.png`
   - `store/screenshot_04_settings_cluster_1280x800.png`
   - `store/screenshot_05_settings_backup_1280x800.png`
+  - `store/screenshot_06_cluster_dashboard_1280x800.png`
+  - `store/screenshot_07_session_banner_1280x800.png`
+  - `store/screenshot_08_snapshots_1280x800.png`
 - **Aufnahme-Modell**: Light und Dark werden je Szene mit `640x800` aufgenommen und nebeneinander zu einem `1280x800`-Export kombiniert.
 - **Marquee/Tile**: 440x280 Pixel (`store/small_promo_tile_new.png`).

@@ -1,4 +1,4 @@
-import { ProxmoxAPI, categorizeConnectionError } from '../lib/proxmox-api.js';
+import { ProxmoxAPI, categorizeConnectionError, buildFailoverUrlList } from '../lib/proxmox-api.js';
 import { getCommunityScriptsCatalog, getCommunityScriptDetails, getCommunityScriptGuide } from '../lib/community-scripts.js';
 import { buildInstallCommandForScripts } from '../lib/install-command.js';
 import {
@@ -255,6 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let sessionBannerCheckToken = 0;
     const pendingStatusOverrides = new Map();
     const detailsFetchedKeys = new Set();
+    const detailsCache = new Map();
     const DETAIL_FETCH_CONCURRENCY = 4;
     let detailFetchInFlight = 0;
     const detailFetchQueue = [];
@@ -422,6 +423,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let scriptDetailsCache = new Map();
     let pendingInlineClusterRemovalId = null;
     let pendingInlineResetConfirmation = false;
+    let pendingInlineRemoveConfirmTimer = null;
+    let pendingInlineResetConfirmTimer = null;
+    const DESTRUCTIVE_CONFIRM_TIMEOUT_MS = 4000;
     let selectedScriptType = 'all';
     let currentGuidePageUrl = '';
     const activePasteFlows = new Set();
@@ -436,6 +440,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let skipPowerConfirmations = false;
     let groupByNodeEnabled = false;
     let showClusterDashboardEnabled = false;
+    let clusterTasksLoading = false;
     const pendingPowerConfirmations = new Map();
     const POWER_CONFIRM_TIMEOUT_MS = 4000;
     const AUTO_PASTE_TIMEOUT_MS = 1500;
@@ -1061,6 +1066,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function resetInlineRemoveClusterConfirmation() {
         pendingInlineClusterRemovalId = null;
+        if (pendingInlineRemoveConfirmTimer) {
+            clearTimeout(pendingInlineRemoveConfirmTimer);
+            pendingInlineRemoveConfirmTimer = null;
+        }
         if (inlineRemoveClusterBtn) {
             inlineRemoveClusterBtn.textContent = 'Remove Cluster';
         }
@@ -1068,6 +1077,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function resetInlineResetConfirmation() {
         pendingInlineResetConfirmation = false;
+        if (pendingInlineResetConfirmTimer) {
+            clearTimeout(pendingInlineResetConfirmTimer);
+            pendingInlineResetConfirmTimer = null;
+        }
         if (inlineResetSettingsBtn) {
             inlineResetSettingsBtn.textContent = chrome.i18n.getMessage('resetSettings') || 'Reset Settings';
         }
@@ -1575,6 +1588,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 inlineRemoveClusterBtn.textContent = 'Click again to remove';
             }
             setInlineSettingsStatus(`Click "Remove Cluster" again to delete "${current.name}".`, 'info');
+            if (pendingInlineRemoveConfirmTimer) clearTimeout(pendingInlineRemoveConfirmTimer);
+            pendingInlineRemoveConfirmTimer = setTimeout(() => {
+                resetInlineRemoveClusterConfirmation();
+            }, DESTRUCTIVE_CONFIRM_TIMEOUT_MS);
             return;
         }
         const removed = removeClusterAndResolve(clusters, current.id, activeClusterId);
@@ -1798,6 +1815,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 chrome.i18n.getMessage('resetSettingsConfirmAgainHint') || 'Click "Reset Settings" again to reset all settings.',
                 'info'
             );
+            if (pendingInlineResetConfirmTimer) clearTimeout(pendingInlineResetConfirmTimer);
+            pendingInlineResetConfirmTimer = setTimeout(() => {
+                resetInlineResetConfirmation();
+            }, DESTRUCTIVE_CONFIRM_TIMEOUT_MS);
             return;
         }
         resetInlineResetConfirmation();
@@ -2070,15 +2091,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         scriptsTypeFilters.querySelectorAll('.scripts-type-pill').forEach(button => {
             button.classList.toggle('active', button.dataset.scriptType === selectedScriptType);
         });
-    }
-
-    function escapeHtml(text) {
-        return (text || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
     }
 
     function renderGuideSection(title, content) {
@@ -2465,7 +2477,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             tab.dataset.clusterTab = cluster.id;
             tab.dataset.clusterColor = getClusterColorToken(cluster.id);
             tab.title = err ? `${cluster.name}: ${err.message}` : cluster.name;
-            tab.innerHTML = `<span class="cluster-status-dot"></span><span>${cluster.name}</span>`;
+            const statusDot = document.createElement('span');
+            statusDot.className = 'cluster-status-dot';
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = cluster.name;
+            tab.appendChild(statusDot);
+            tab.appendChild(nameSpan);
             clusterTabs.appendChild(tab);
         });
         updateClusterFetchBanner();
@@ -2731,23 +2748,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return b.every((u) => setA.has(u));
     }
 
-    function buildFailoverUrlList(primaryUrl, resources) {
-        try {
-            const nodes = resources.filter((res) => res.type === 'node');
-            if (nodes.length <= 1) return null;
-            const urlObj = new URL(primaryUrl);
-            const port = urlObj.port;
-            const protocol = urlObj.protocol;
-            const failoverUrls = nodes.map((n) =>
-                (port ? `${protocol}//${n.node}:${port}` : `${protocol}//${n.node}`).replace(/\/$/, '')
-            );
-            const primary = primaryUrl.replace(/\/$/, '');
-            return [...new Set([primary, ...failoverUrls])];
-        } catch (_e) {
-            return null;
-        }
-    }
-
     async function syncFailoverFromResources() {
         let changed = false;
         for (const cluster of getEnabledClusters()) {
@@ -2917,6 +2917,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // for whichever rows the user expands; filter-only re-renders still hit
         // the cache because they don't go through fetchAndRender.
         detailsFetchedKeys.clear();
+        detailsCache.clear();
         try {
             const enabledClusters = getEnabledClusters();
             const previousByCluster = new Map(resourcesByClusterId);
@@ -3026,12 +3027,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const kind = categorizeConnectionError(error);
                 const kindHintKey = {
                     network: 'connectionFailedKindNetwork',
+                    selfsigned: 'connectionFailedKindSelfSigned',
+                    tls: 'connectionFailedKindTls',
                     auth: 'connectionFailedKindAuth',
                     timeout: 'connectionFailedKindTimeout',
                     'https-only': 'connectionFailedKindHttpsOnly'
                 }[kind] || '';
                 const kindHint = kindHintKey ? escapeHtml(chrome.i18n.getMessage(kindHintKey) || '') : '';
-                const selfSignedHint = (kind === 'network' || kind === 'unknown')
+                const selfSignedHint = (kind === 'selfsigned' || kind === 'tls' || kind === 'network' || kind === 'unknown')
                     ? escapeHtml(chrome.i18n.getMessage('connectionFailedSelfSignedHint') || '')
                     : '';
                 const proxmoxUrlForLink = (
@@ -3387,19 +3390,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (detailsLoaded) return;
                 if (!resourceApi) return;
                 if (!(res.status === 'running' || res.status === 'online' || res.type === 'node')) return;
-                detailsLoaded = true;
                 const cacheKey = getResourceKey(res);
-                if (detailsFetchedKeys.has(cacheKey)) {
-                    // Already fetched in this popup session for this resource. Skip the
-                    // network round-trip; updateUsageStats() above already refreshed
-                    // metrics from cluster/resources, and OS/IP/disks rarely change
-                    // between renders.
+                const cachedDetails = detailsCache.get(cacheKey);
+                if (cachedDetails) {
+                    detailsLoaded = true;
+                    renderResourceDetails(cachedDetails);
                     return;
                 }
+                if (detailsFetchedKeys.has(cacheKey)) {
+                    return;
+                }
+                detailsLoaded = true;
                 detailsFetchedKeys.add(cacheKey);
                 scheduleDetailFetch(() => resourceApi.getResourceDetails(res))
-                    .then(renderResourceDetails)
-                    .catch(err => console.error('Details error:', err));
+                    .then((details) => {
+                        detailsCache.set(cacheKey, details);
+                        renderResourceDetails(details);
+                    })
+                    .catch((err) => {
+                        detailsFetchedKeys.delete(cacheKey);
+                        detailsLoaded = false;
+                        console.error('Details error:', err);
+                    });
             };
 
             // Eagerly fetch details on first render only when the item is currently
@@ -3892,14 +3904,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             : settings.proxmoxUrl;
         debugStatus.style.display = 'block';
         debugStatus.textContent = 'Checking session...';
-        console.log(`[Popup] Attempting to open console for ${node} ${vmid || ''}`);
-        
+
         try {
             const hasSession = await targetApi.checkSession();
-            console.log(`[Popup] Session check result: ${hasSession}`);
-            
+
             if (!hasSession) {
-                console.log('[Popup] Showing session error overlay');
                 debugStatus.textContent = 'Session invalid. Login required.';
                 pendingSessionLoginUrl = (clusterUrl || settings.proxmoxUrl || '').trim().replace(/\/$/, '');
                 const sessionErrorHost = document.getElementById('session-error-host');
@@ -3989,7 +3998,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
-            console.log(`[Popup] Opening console URL: ${url}`);
             debugStatus.textContent = 'Opening console...';
             const createdTab = await chrome.tabs.create({ url });
             setTimeout(() => { debugStatus.style.display = 'none'; }, 2000);
@@ -4576,8 +4584,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             return '';
         }
     }
-
-    let clusterTasksLoading = false;
 
     async function renderClusterTasksPanel() {
         if (!clusterTasksPanel || !clusterTasksList) return;

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-09-18
+
+### Fixed
+- Cluster tab names are rendered as text nodes, so a crafted cluster name cannot inject HTML into the popup.
+- Expanded resource details now replay cached OS/IP/disk data after filter/search re-renders, and a failed detail fetch can retry.
+- Console URLs and session checks follow the live failover host instead of always using the configured primary URL.
+- Self-signed and TLS errors are classified separately from generic network failures.
+- Toolbar clicks fall back to a floating window when Side Panel is unavailable or fails to open.
+- Floating window IDs are cleared when the window is closed.
+- Two-step reset/remove confirmations expire after a few seconds.
+- Auto-discovered failover hosts are stored only when the node name is an IP/FQDN or a sibling of the primary hostname.
+- Cluster dashboard/tasks no longer throw when the resource list renders before the tasks-loading flag is initialized.
+
+### Changed
+- Verbose session-check console logging is no longer emitted in production.
+- Release CI now runs tests and version/locale gates, and the release ZIP excludes test and mock assets.
+
+### Tests
+- Added unit coverage for encrypted backups, cluster-store helpers, install-command validation, toolbar routing, failover, and session checks.
+- Added a Playwright interaction test for dashboard, tasks, session banner, snapshots, and power confirmation.
+
 ## [1.3.0] - 2026-05-30
 
 ### Added

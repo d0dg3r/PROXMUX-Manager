@@ -41,6 +41,11 @@ Additional screenshots:
   <img src="store/screenshot_04_settings_cluster_1280x800.png" alt="Settings Cluster Combined" width="24%">
   <img src="store/screenshot_05_settings_backup_1280x800.png" alt="Settings Backup Combined" width="24%">
 </p>
+<p>
+  <img src="store/screenshot_06_cluster_dashboard_1280x800.png" alt="Cluster Dashboard Combined" width="24%">
+  <img src="store/screenshot_07_session_banner_1280x800.png" alt="Session Banner Combined" width="24%">
+  <img src="store/screenshot_08_snapshots_1280x800.png" alt="Snapshots Combined" width="24%">
+</p>
 
 ## Installation
 
@@ -124,6 +129,20 @@ If PROXMUX only shows nodes but not VMs/LXCs, validate token rights first (`Sys.
   - `store/screenshot_03_onboarding_1280x800.png`
   - `store/screenshot_04_settings_cluster_1280x800.png`
   - `store/screenshot_05_settings_backup_1280x800.png`
+  - `store/screenshot_06_cluster_dashboard_1280x800.png`
+  - `store/screenshot_07_session_banner_1280x800.png`
+  - `store/screenshot_08_snapshots_1280x800.png`
+
+## What's New in v1.3.1
+
+- **Safer Cluster Tabs**: Cluster names render as text, so a crafted name cannot inject HTML into the popup.
+- **Detail Cache Replay**: Expanded OS/IP/disk details stay visible after search or filter re-renders; failed detail fetches can retry.
+- **Console Failover**: noVNC, shell, and session checks use the live failover host instead of a dead primary URL.
+- **Clearer TLS Errors**: Self-signed and TLS handshake failures are classified separately from generic network errors.
+- **Toolbar Fallback**: If Side Panel is unavailable or fails to open, the extension opens the floating window.
+- **Safer Confirmations**: Reset/remove "click again" prompts expire after a few seconds.
+- **Smarter Failover Hosts**: Auto-discovered node URLs are stored only when they are an IP, FQDN, or a sibling of the primary hostname.
+- **Dashboard Startup Fix**: Cluster dashboard and recent tasks no longer fail when the list renders before the tasks panel is ready.
 
 ## What's New in v1.3.0
 
